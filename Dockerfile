@@ -6,12 +6,12 @@ WORKDIR /app
 RUN groupadd --system app && useradd --system --gid app --create-home app
 
 # Apply OS security patches and remove packages not needed at runtime.
-# ncurses-bin contains the infocmp CLI tool (CVE-2025-69720) which has no
-# purpose in a web container; the ncurses libraries remain for Python's use.
-# tar and apt are build-time-only tools that increase attack surface at runtime.
+# ncurses-bin contains the infocmp CLI tool (CVE-2025-69720, high) — the tool
+# has no purpose in a web container; the ncurses libraries remain for Python.
+# tar cannot be removed (dpkg hard-dependency), so CVE-2026-5704 is residual.
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get remove --purge -y ncurses-bin tar \
+ && apt-get remove --purge -y --allow-remove-essential ncurses-bin \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
