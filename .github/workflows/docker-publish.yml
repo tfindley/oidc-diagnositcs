@@ -52,6 +52,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
@@ -62,8 +63,8 @@ jobs:
             org.opencontainers.image.title=OIDC Diagnostic Tool
             org.opencontainers.image.description=OIDC client for diagnosing SSO claims from Keycloak and other providers
 
-      # Build for both amd64 and arm64 so the image runs on Macs and Raspberry Pis too.
-      # On PRs we build but do not push (smoke-test only).
+      # Branch pushes build amd64 only (fast feedback). Version tags build both
+      # architectures so published releases run on Macs and Raspberry Pis too.
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v6
@@ -72,10 +73,21 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
-          # GitHub Actions cache keeps layer rebuilds fast
+          platforms: ${{ startsWith(github.ref, 'refs/tags/') && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Make package public
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            /user/packages/container/${PACKAGE_NAME} \
+            -f visibility=public || true
 
       # Attach a signed provenance attestation to the pushed image so users
       # can verify it was built from this exact commit via `docker buildx imagetools inspect`.

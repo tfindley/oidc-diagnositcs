@@ -1,0 +1,63 @@
+{# Shared Jinja2 macros — import with:
+     {% from "macros.html" import claim_value, claims_table %}
+#}
+
+{% macro claim_value(claim) %}
+  {% if claim.value_type == 'boolean' %}
+    <span class="badge {{ 'badge-green' if claim.value else 'badge-red' }}">
+      {{ 'true' if claim.value else 'false' }}
+    </span>
+  {% elif claim.value_type == 'timestamp' %}
+    <span class="{{ 'text-danger' if claim.is_expired else '' }}">
+      <code>{{ claim.value }}</code>
+      {% if claim.formatted %}<small class="text-muted">&nbsp;({{ claim.formatted }})</small>{% endif %}
+      {% if claim.is_expired %}&nbsp;<span class="badge badge-red">EXPIRED</span>{% endif %}
+    </span>
+  {% elif claim.value_type == 'array' %}
+    <div class="tags">
+      {% for item in claim.value %}<span class="tag">{{ item }}</span>{% endfor %}
+    </div>
+  {% elif claim.value_type == 'object' %}
+    <details>
+      <summary>Object ({{ claim.value | length }} key{{ 's' if claim.value | length != 1 else '' }})</summary>
+      <pre style="margin-top:8px;">{{ claim.value | tojson(indent=2) }}</pre>
+    </details>
+  {% elif claim.value_type == 'number' %}
+    <code>{{ claim.value }}</code>
+  {% else %}
+    <code class="{{ 'sensitive' if claim.is_sensitive else '' }}">{{ claim.value }}</code>
+  {% endif %}
+{% endmacro %}
+
+{% macro claims_table(claims) %}
+{% if claims %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:200px">Claim</th>
+        <th>Value</th>
+        <th style="width:36px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in claims %}
+      <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}">
+        <td>
+          <div class="claim-key">{{ c.key }}</div>
+          {% if c.description %}<div class="claim-desc">{{ c.description }}</div>{% endif %}
+        </td>
+        <td class="claim-val">{{ claim_value(c) }}</td>
+        <td class="copy-col">
+          <button class="btn btn-xs btn-ghost" title="Copy value"
+                  onclick="copyText({{ c.copy_value | tojson }})">&#x2398;</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted" style="padding:24px;text-align:center;">No claims available.</p>
+{% endif %}
+{% endmacro %}

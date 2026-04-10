@@ -350,6 +350,20 @@
       });
     });
   }
+
+  // ── Mask / unmask sensitive values ────────────────────────────────────────
+  // scope: optional CSS selector limiting which .sensitive elements are toggled.
+  // State is stored on the button via data-masked to avoid module-level variables.
+  function toggleMask(btn, scope) {
+    const container = scope ? document.querySelector(scope) : document;
+    const isMasked = btn.dataset.masked === '1';
+    btn.dataset.masked = isMasked ? '' : '1';
+    (container || document).querySelectorAll('.sensitive').forEach(el => {
+      el.style.filter = isMasked ? '' : 'blur(6px)';
+    });
+    btn.classList.toggle('btn-toggle-on', !isMasked);
+    btn.textContent = isMasked ? '\uD83D\uDC41 Mask sensitive' : '\uD83D\uDC41 Unmask sensitive';
+  }
   </script>
   {% block scripts %}{% endblock %}
 </body>

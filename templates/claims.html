@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import claim_value, claims_table %}
 {% block title %}Claims — OIDC Diagnostics{% endblock %}
 
 {% block extra_css %}
@@ -15,7 +16,6 @@
 .chip-bad { background: #f8d7da; color: #842029; }
 .chip-warn{ background: #fff3cd; color: #664d03; }
 
-/* raw token box */
 .token-box {
   font-family: var(--mono); font-size: 0.75rem;
   background: var(--surface2); border: 1px solid var(--border);
@@ -24,18 +24,14 @@
   overflow-y: auto; line-height: 1.7; margin-bottom: 14px;
   position: relative;
 }
-.token-copy-btn {
-  position: absolute; top: 8px; right: 8px;
-}
+.token-copy-btn { position: absolute; top: 8px; right: 8px; }
 
-/* compare table specific */
 .cmp-val {
   font-family: var(--mono); font-size: 0.75rem;
   color: var(--muted); max-width: 260px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* section heading inside tab */
 .section-head {
   font-size: 0.8125rem; font-weight: 600;
   color: var(--muted); text-transform: uppercase;
@@ -43,76 +39,10 @@
 }
 .section-head:first-child { margin-top: 0; }
 
-/* toggle active */
 .btn-toggle-on { background: #eaedfd; color: var(--primary); border-color: #c5cdf9; }
 {% endblock %}
 
-{% macro claim_value(claim) %}
-  {% if claim.value_type == 'boolean' %}
-    <span class="badge {{ 'badge-green' if claim.value else 'badge-red' }}">
-      {{ 'true' if claim.value else 'false' }}
-    </span>
-  {% elif claim.value_type == 'timestamp' %}
-    <span class="{{ 'text-danger' if claim.is_expired else '' }}">
-      <code>{{ claim.value }}</code>
-      {% if claim.formatted %}<small class="text-muted">&nbsp;({{ claim.formatted }})</small>{% endif %}
-      {% if claim.is_expired %}&nbsp;<span class="badge badge-red">EXPIRED</span>{% endif %}
-    </span>
-  {% elif claim.value_type == 'array' %}
-    <div class="tags">
-      {% for item in claim.value %}
-        <span class="tag">{{ item }}</span>
-      {% endfor %}
-    </div>
-  {% elif claim.value_type == 'object' %}
-    <details>
-      <summary>Object ({{ claim.value | length }} key{{ 's' if claim.value | length != 1 else '' }})</summary>
-      <pre style="margin-top:8px;">{{ claim.value | tojson(indent=2) }}</pre>
-    </details>
-  {% elif claim.value_type == 'number' %}
-    <code>{{ claim.value }}</code>
-  {% else %}
-    <code class="{{ 'sensitive' if claim.is_sensitive else '' }}">{{ claim.value }}</code>
-  {% endif %}
-{% endmacro %}
-
-{% macro claims_table(claims, table_class='') %}
-{% if claims %}
-<div class="table-wrap">
-  <table class="claims-tbl {{ table_class }}">
-    <thead>
-      <tr>
-        <th style="width:200px">Claim</th>
-        <th>Value</th>
-        <th style="width:36px"></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for c in claims %}
-      <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}">
-        <td>
-          <div class="claim-key">{{ c.key }}</div>
-          {% if c.description %}
-          <div class="claim-desc">{{ c.description }}</div>
-          {% endif %}
-        </td>
-        <td class="claim-val">{{ claim_value(c) }}</td>
-        <td class="copy-col">
-          <button class="btn btn-xs btn-ghost" title="Copy value"
-                  onclick="copyText({{ c.copy_value | tojson }})">&#x2398;</button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% else %}
-<p class="text-muted" style="padding:24px;text-align:center;">No claims available.</p>
-{% endif %}
-{% endmacro %}
-
 {% block content %}
-<!-- Page header -->
 <div class="page-header">
   <span class="page-title">Claims for <em>{{ username }}</em></span>
   {% if expiry_info %}
@@ -135,9 +65,7 @@
   <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Sign out</a>
 </div>
 
-<!-- Main card with tabs -->
 <div class="card" id="main-tabs">
-  <!-- Tab bar -->
   <div style="padding: 0 20px;">
     <div class="tabs">
       <button class="tab-btn active" data-tab="id">
@@ -156,23 +84,15 @@
     </div>
   </div>
 
-  <!-- Toolbar -->
   <div class="toolbar" style="padding: 0 20px 12px;">
     <input class="search-input" id="claim-search" type="search" placeholder="Search claims…" autocomplete="off">
-    <button class="btn btn-ghost btn-sm" id="mask-btn" onclick="toggleMask(this)" title="Blur sensitive values like sub, email, name">
+    <button class="btn btn-ghost btn-sm" onclick="toggleMask(this)" title="Blur sensitive values like sub, email, name">
       &#128065; Mask sensitive
     </button>
-    <button class="btn btn-ghost btn-sm" onclick="copyText(document.getElementById('all-json-data').textContent)">
+    <button class="btn btn-ghost btn-sm" onclick="copyAllJson()">
       &#x2398; Copy all JSON
     </button>
   </div>
-
-  <!-- Hidden data blob for copy-all -->
-  <script id="all-json-data" type="application/json">
-    {{ {'id_token': id_token_claims | map(attribute='value') | list,
-        'access_token': access_token_claims | map(attribute='value') | list,
-        'userinfo': userinfo_claims | map(attribute='value') | list } | tojson(indent=2) }}
-  </script>
 
   <!-- ── ID Token tab ── -->
   <div class="tab-panel active" data-panel="id" style="padding:0 20px 20px;">
@@ -184,7 +104,7 @@
     <pre style="margin-bottom:16px;">{{ id_token_header | tojson(indent=2) }}</pre>
     {% endif %}
     <div class="section-head">Payload Claims</div>
-    {{ claims_table(id_token_claims, 'filterable') }}
+    {{ claims_table(id_token_claims) }}
   </div>
 
   <!-- ── Access Token tab ── -->
@@ -197,7 +117,7 @@
     <pre style="margin-bottom:16px;">{{ access_token_header | tojson(indent=2) }}</pre>
     {% endif %}
     <div class="section-head">Payload Claims</div>
-    {{ claims_table(access_token_claims, 'filterable') }}
+    {{ claims_table(access_token_claims) }}
   </div>
 
   <!-- ── UserInfo tab ── -->
@@ -205,7 +125,7 @@
     <p class="text-muted mt-2" style="font-size:0.8125rem;margin-bottom:14px;">
       Claims returned by the <code>/userinfo</code> endpoint (fetched during login).
     </p>
-    {{ claims_table(userinfo_claims, 'filterable') }}
+    {{ claims_table(userinfo_claims) }}
   </div>
 
   <!-- ── Compare tab ── -->
@@ -233,30 +153,19 @@
                 {{ row.key }}
                 {% if row.mismatch %}&nbsp;<span class="badge badge-yellow" title="Values differ across sources">&#9888;</span>{% endif %}
               </div>
-              {% if row.description %}
-              <div class="claim-desc">{{ row.description }}</div>
-              {% endif %}
+              {% if row.description %}<div class="claim-desc">{{ row.description }}</div>{% endif %}
             </td>
             <td style="text-align:center;">
-              {% if row.in_id %}
-                <span class="compare-check" title="{{ row.id_val | string }}">&#10003;</span>
-              {% else %}
-                <span class="compare-miss">—</span>
-              {% endif %}
+              {% if row.in_id %}<span class="compare-check" title="{{ row.id_val | string }}">&#10003;</span>
+              {% else %}<span class="compare-miss">—</span>{% endif %}
             </td>
             <td style="text-align:center;">
-              {% if row.in_access %}
-                <span class="compare-check" title="{{ row.access_val | string }}">&#10003;</span>
-              {% else %}
-                <span class="compare-miss">—</span>
-              {% endif %}
+              {% if row.in_access %}<span class="compare-check" title="{{ row.access_val | string }}">&#10003;</span>
+              {% else %}<span class="compare-miss">—</span>{% endif %}
             </td>
             <td style="text-align:center;">
-              {% if row.in_userinfo %}
-                <span class="compare-check" title="{{ row.userinfo_val | string }}">&#10003;</span>
-              {% else %}
-                <span class="compare-miss">—</span>
-              {% endif %}
+              {% if row.in_userinfo %}<span class="compare-check" title="{{ row.userinfo_val | string }}">&#10003;</span>
+              {% else %}<span class="compare-miss">—</span>{% endif %}
             </td>
             <td>
               {% set val = row.id_val if row.id_val is not none else (row.access_val if row.access_val is not none else row.userinfo_val) %}
@@ -289,7 +198,7 @@
     {% macro raw_section(label, token_str) %}
     {% if token_str %}
     <div class="section-head">{{ label }}</div>
-    <div class="token-box" style="position:relative;">
+    <div class="token-box">
       {% set parts = token_str.split('.') %}
       {% if parts | length == 3 %}
         <span class="jwt-header">{{ parts[0] }}</span><span class="jwt-dot">.</span><span class="jwt-payload">{{ parts[1] }}</span><span class="jwt-dot">.</span><span class="jwt-sig">{{ parts[2] }}</span>
@@ -320,39 +229,25 @@
 
 {% block scripts %}
 <script>
-  // Init tabs
   initTabs('#main-tabs');
 
-  // Init search — filters .claim-row inside any visible .tab-panel
-  document.getElementById('claim-search').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
+  // Search — re-applies when switching tabs so the filter persists across tabs
+  const searchInput = document.getElementById('claim-search');
+  function applySearch() {
+    const q = searchInput.value.toLowerCase();
     document.querySelectorAll('.tab-panel.active .claim-row').forEach(row => {
       row.style.display = (row.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
     });
-  });
-
-  // Re-apply search when switching tabs
+  }
+  searchInput.addEventListener('input', applySearch);
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const q = document.getElementById('claim-search').value.toLowerCase();
-      if (!q) return;
-      setTimeout(() => {
-        document.querySelectorAll('.tab-panel.active .claim-row').forEach(row => {
-          row.style.display = (row.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
-        });
-      }, 10);
-    });
+    btn.addEventListener('click', () => { if (searchInput.value) setTimeout(applySearch, 10); });
   });
 
-  // Mask sensitive values
-  let masked = false;
-  function toggleMask(btn) {
-    masked = !masked;
-    document.querySelectorAll('.sensitive').forEach(el => {
-      el.style.filter = masked ? 'blur(6px)' : '';
-    });
-    btn.classList.toggle('btn-toggle-on', masked);
-    btn.textContent = masked ? '👁 Unmask sensitive' : '👁 Mask sensitive';
+  // Copy all claims as JSON by fetching the /claims.json endpoint
+  async function copyAllJson() {
+    const resp = await fetch('{{ url_for("claims_json") }}');
+    copyText(await resp.text());
   }
 
   // Expiry countdown
@@ -383,10 +278,5 @@
     }, 1000);
   })();
   {% endif %}
-
-  // Build copy-all JSON from actual decoded data
-  document.querySelector('[onclick*="all-json-data"]') && (() => {
-    // replace the simple attribute copy with real data
-  })();
 </script>
 {% endblock %}
