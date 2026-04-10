@@ -44,12 +44,12 @@ providers:
 
 ### Optional Keycloak scopes
 
-| Scope | Claims returned | How to enable |
-| --- | --- | --- |
-| `roles` | `realm_access`, `resource_access` | Add the `roles` client scope to your client under **Client scopes** |
-| `groups` | `groups` | Requires a custom group mapper; add a **Group Membership** mapper to your client's dedicated scope |
-| `offline_access` | *(no claims — issues a refresh token)* | Allow `offline_access` in **Client scopes**; request it in `OIDC_SCOPE` |
-| `microprofile-jwt` | `upn`, `groups` | Keycloak-specific; mirrors the MicroProfile JWT spec |
+| Scope              | Claims returned                        | How to enable                                                                                      |
+| ------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `roles`            | `realm_access`, `resource_access`      | Add the `roles` client scope to your client under **Client scopes**                                |
+| `groups`           | `groups`                               | Requires a custom group mapper; add a **Group Membership** mapper to your client's dedicated scope |
+| `offline_access`   | *(no claims — issues a refresh token)* | Allow `offline_access` in **Client scopes**; request it in `OIDC_SCOPE`                            |
+| `microprofile-jwt` | `upn`, `groups`                        | Keycloak-specific; mirrors the MicroProfile JWT spec                                               |
 
 ---
 
@@ -105,10 +105,10 @@ providers:
 
 ### Optional Kanidm scopes
 
-| Scope | Claims returned | How to enable |
-| --- | --- | --- |
-| `groups` | `groups` (array of group names) | Add `groups` to the `update-scope-map` command: `kanidm system oauth2 update-scope-map ssotest <group> openid email profile groups` |
-| `offline_access` | *(no claims — issues a refresh token)* | Add `offline_access` to the scope map; request it in `OIDC_SCOPE` |
+| Scope            | Claims returned                        | How to enable                                                                                                                       |
+| ---------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `groups`         | `groups` (array of group names)        | Add `groups` to the `update-scope-map` command: `kanidm system oauth2 update-scope-map ssotest <group> openid email profile groups` |
+| `offline_access` | *(no claims — issues a refresh token)* | Add `offline_access` to the scope map; request it in `OIDC_SCOPE`                                                                   |
 
 > The `groups` claim returns the names of Kanidm groups the user is a member of. Only groups explicitly added to the scope map are eligible — Kanidm uses this to control which group memberships are disclosed to each OAuth2 client.
 > The `roles` scope is **not** supported by Kanidm; `realm_access` / `resource_access` claims will not appear.
@@ -150,11 +150,11 @@ providers:
 
 ### Optional Authentik scopes
 
-| Scope | Claims returned | How to enable |
-| --- | --- | --- |
-| `groups` | `groups` (array of group names or UUIDs) | Add a **Group Membership** scope mapping in the provider's **Scope mappings** settings |
-| `offline_access` | *(no claims — issues a refresh token)* | Enable **Include Refresh Token** in the provider's advanced settings |
-| `roles` | `roles` or custom claim | Requires a custom Property Mapping that returns role data |
+| Scope            | Claims returned                          | How to enable                                                                          |
+| ---------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `groups`         | `groups` (array of group names or UUIDs) | Add a **Group Membership** scope mapping in the provider's **Scope mappings** settings |
+| `offline_access` | *(no claims — issues a refresh token)*   | Enable **Include Refresh Token** in the provider's advanced settings                   |
+| `roles`          | `roles` or custom claim                  | Requires a custom Property Mapping that returns role data                              |
 
 ---
 
@@ -194,10 +194,10 @@ providers:
 
 ### Optional Entra ID scopes
 
-| Scope | Claims returned | How to enable |
-| --- | --- | --- |
-| `offline_access` | *(no claims — issues a refresh token)* | Add `offline_access` to **API permissions** and to `OIDC_SCOPE` |
-| `User.Read` | Graph profile data (not standard OIDC claims) | MS Graph permission, not surfaced as JWT claims by default |
+| Scope            | Claims returned                               | How to enable                                                   |
+| ---------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| `offline_access` | *(no claims — issues a refresh token)*        | Add `offline_access` to **API permissions** and to `OIDC_SCOPE` |
+| `User.Read`      | Graph profile data (not standard OIDC claims) | MS Graph permission, not surfaced as JWT claims by default      |
 
 > Entra exposes group membership via the `groups` claim, but it requires enabling **Group claims** in the **Token configuration** section of the app registration. For users in many groups, Entra may return a `hasgroups: true` claim instead and require a separate MS Graph call — this tool does not make that call.
 
@@ -236,10 +236,10 @@ providers:
 
 ### Optional Okta scopes
 
-| Scope | Claims returned | How to enable |
-| --- | --- | --- |
-| `groups` | `groups` (array of group names) | In the **Sign-On Policy** or **Groups claim filter**, add a `groups` claim to the ID token or access token; configure it in the Okta authorization server's **Claims** settings |
-| `offline_access` | *(no claims — issues a refresh token)* | Enable **Refresh Token** in the application's **Grant type** settings |
+| Scope            | Claims returned                        | How to enable                                                                                                                                                                   |
+| ---------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `groups`         | `groups` (array of group names)        | In the **Sign-On Policy** or **Groups claim filter**, add a `groups` claim to the ID token or access token; configure it in the Okta authorization server's **Claims** settings |
+| `offline_access` | *(no claims — issues a refresh token)* | Enable **Refresh Token** in the application's **Grant type** settings                                                                                                           |
 
 ---
 
@@ -247,12 +247,12 @@ providers:
 
 GitHub's public OAuth service is **not a full OIDC provider** — it does not publish a `/.well-known/openid-configuration` discovery document for regular web-app login. You have a few options:
 
-| Approach | Notes |
-| --- | --- |
-| **Google** | The simplest option. Create an OAuth2 client in [Google Cloud Console](https://console.cloud.google.com) (free). Discovery URL: `https://accounts.google.com/.well-known/openid-configuration`. Every visitor already has a Google account. |
-| **Microsoft Entra ID** | Free personal Microsoft account tenant. Discovery URL: `https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration`. Also widely owned. |
-| **Dex** (identity broker) | Self-hostable. Dex speaks full OIDC and can delegate authentication upstream to GitHub OAuth, Google, LDAP, etc. Run it in Docker Compose alongside this app. Good if you specifically want to show GitHub-branded login. |
-| **Keycloak with GitHub social login** | Keycloak issues the OIDC tokens; GitHub is just the authentication backend. More moving parts but mirrors real enterprise deployments. |
-| **Authentik** | Has a free cloud tier. GitHub social login built in. Issues full OIDC tokens. |
-| **Auth0** | Free developer tier (up to 7,500 MAU). Full OIDC. Zero infrastructure to manage. |
-| **Zitadel** | Open source with a free cloud tier. Full OIDC. GitHub social login supported. |
+| Approach                              | Notes                                                                                                                                                                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Google**                            | The simplest option. Create an OAuth2 client in [Google Cloud Console](https://console.cloud.google.com) (free). Discovery URL: `https://accounts.google.com/.well-known/openid-configuration`. Every visitor already has a Google account. |
+| **Microsoft Entra ID**                | Free personal Microsoft account tenant. Discovery URL: `https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration`. Also widely owned.                                                                                 |
+| **Dex** (identity broker)             | Self-hostable. Dex speaks full OIDC and can delegate authentication upstream to GitHub OAuth, Google, LDAP, etc. Run it in Docker Compose alongside this app. Good if you specifically want to show GitHub-branded login.                   |
+| **Keycloak with GitHub social login** | Keycloak issues the OIDC tokens; GitHub is just the authentication backend. More moving parts but mirrors real enterprise deployments.                                                                                                      |
+| **Authentik**                         | Has a free cloud tier. GitHub social login built in. Issues full OIDC tokens.                                                                                                                                                               |
+| **Auth0**                             | Free developer tier (up to 7,500 MAU). Full OIDC. Zero infrastructure to manage.                                                                                                                                                            |
+| **Zitadel**                           | Open source with a free cloud tier. Full OIDC. GitHub social login supported.                                                                                                                                                               |
