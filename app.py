@@ -112,6 +112,52 @@ SENSITIVE_CLAIMS = frozenset({
     'profile', 'jti', 'sid', 'session_state',
 })
 
+# Maps each claim name to the OIDC scope that introduces it.
+CLAIM_SCOPES: dict = {
+    # openid (core JWT infrastructure claims)
+    'sub': 'openid', 'iss': 'openid', 'aud': 'openid', 'exp': 'openid',
+    'iat': 'openid', 'nbf': 'openid', 'jti': 'openid', 'nonce': 'openid',
+    'at_hash': 'openid', 'c_hash': 'openid', 'acr': 'openid', 'amr': 'openid',
+    'azp': 'openid', 'auth_time': 'openid', 'sid': 'openid',
+    'session_state': 'openid', 'typ': 'openid', 'scope': 'openid', 'client_id': 'openid',
+    # email scope
+    'email': 'email', 'email_verified': 'email',
+    # profile scope
+    'name': 'profile', 'given_name': 'profile', 'family_name': 'profile',
+    'middle_name': 'profile', 'nickname': 'profile', 'preferred_username': 'profile',
+    'profile': 'profile', 'picture': 'profile', 'website': 'profile',
+    'locale': 'profile', 'zoneinfo': 'profile', 'updated_at': 'profile',
+    # phone scope
+    'phone_number': 'phone', 'phone_number_verified': 'phone',
+    # address scope
+    'address': 'address',
+    # groups / roles (provider-specific scopes with well-known names)
+    'groups': 'groups',
+    'roles': 'roles', 'realm_access': 'roles', 'resource_access': 'roles',
+    # Azure AD-specific claims (no standard OIDC scope; labelled for clarity)
+    'wids': 'azure', 'oid': 'azure', 'tid': 'azure', 'upn': 'azure',
+    'ver': 'azure', 'appid': 'azure', 'unique_name': 'azure',
+    # Keycloak-specific
+    'allowed-origins': 'keycloak',
+}
+
+# Scopes that have a known set of claims — used to detect empty grants.
+_SCOPE_KNOWN_CLAIMS: dict = {
+    'email':   frozenset({'email', 'email_verified'}),
+    'profile': frozenset({'name', 'given_name', 'family_name', 'middle_name',
+                          'nickname', 'preferred_username', 'profile', 'picture',
+                          'website', 'locale', 'zoneinfo', 'updated_at'}),
+    'phone':   frozenset({'phone_number', 'phone_number_verified'}),
+    'address': frozenset({'address'}),
+    'groups':  frozenset({'groups'}),
+    'roles':   frozenset({'realm_access', 'resource_access', 'roles'}),
+}
+
+# Scopes worth surfacing as "available but not configured"
+_INTERESTING_SCOPES = frozenset({
+    'email', 'profile', 'phone', 'address', 'offline_access', 'groups', 'roles',
+})
+
 CLAIM_DESCRIPTIONS = {
     'sub': 'Subject — Unique, stable identifier for this user at this issuer',
     'iss': 'Issuer — URL of the authorization server that issued the token',
@@ -230,6 +276,7 @@ def prepare_claims(claims_dict: dict) -> list:
             'value': value,
             'description': CLAIM_DESCRIPTIONS.get(key, ''),
             'is_sensitive': key in SENSITIVE_CLAIMS,
+            'scope': CLAIM_SCOPES.get(key, ''),
             'value_type': 'string',
             'formatted': None,
             'is_expired': False,
@@ -378,6 +425,16 @@ def _handle_callback(provider_id: str):
     if 'login_start' in session:
         login_duration = round(time.time() - session.pop('login_start'), 2)
 
+    # Store discovery metadata for scope analysis on the claims page.
+    # load_server_metadata() uses Authlib's cached metadata (no extra HTTP request).
+    provider_cfg = next((p for p in PROVIDERS if p['id'] == provider_id), {})
+    session['configured_scope'] = provider_cfg.get('scope', 'openid email profile')
+    try:
+        meta = oauth.create_client(provider_id).load_server_metadata()
+        session['scopes_supported'] = list(meta.get('scopes_supported') or [])
+    except Exception:
+        session['scopes_supported'] = []
+
     session['provider_id'] = provider_id
     session['raw_tokens'] = {
         'access_token':  token.get('access_token'),
@@ -441,6 +498,32 @@ def claims():
 
     has_refresh_token = bool(raw_tokens.get('refresh_token'))
 
+    # ── Scope analysis ────────────────────────────────────────────────────────
+    # Use the scope string from the token response; fall back to what was configured.
+    granted_scope_str = raw_tokens.get('scope', '') or session.get('configured_scope', '')
+    granted_scopes = granted_scope_str.split() if granted_scope_str else []
+    all_claim_keys = set(id_payload) | set(access_payload) | set(userinfo)
+
+    scope_analysis = []
+    for scope in sorted(set(granted_scopes)):
+        known = _SCOPE_KNOWN_CLAIMS.get(scope, frozenset())
+        found = len(known & all_claim_keys) if known else 0
+        scope_analysis.append({
+            'scope': scope,
+            'has_known_claims': bool(known),
+            'found': found,
+            # Warn only when we know what claims to expect but got none.
+            # offline_access intentionally yields no claims (it's a refresh token grant).
+            'empty': bool(known) and found == 0,
+        })
+
+    scopes_supported = session.get('scopes_supported', [])
+    configured_scope_set = set(session.get('configured_scope', '').split())
+    unconfigured_scopes = sorted([
+        s for s in scopes_supported
+        if s not in configured_scope_set and s in _INTERESTING_SCOPES
+    ])
+
     return render_template('claims.html',
         username=session.get('user'),
         id_token_claims=prepare_claims(id_payload),
@@ -455,6 +538,8 @@ def claims():
         expiry_info=expiry_info,
         has_refresh_token=has_refresh_token,
         login_duration=session.get('login_duration'),
+        scope_analysis=scope_analysis,
+        unconfigured_scopes=unconfigured_scopes,
     )
 
 

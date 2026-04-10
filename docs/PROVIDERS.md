@@ -42,6 +42,15 @@ providers:
 
 > Keycloak defaults to RS256 for token signing. ES256 can be enabled per-realm under **Realm settings → Tokens → Default signature algorithm**.
 
+### Optional Keycloak scopes
+
+| Scope | Claims returned | How to enable |
+| --- | --- | --- |
+| `roles` | `realm_access`, `resource_access` | Add the `roles` client scope to your client under **Client scopes** |
+| `groups` | `groups` | Requires a custom group mapper; add a **Group Membership** mapper to your client's dedicated scope |
+| `offline_access` | *(no claims — issues a refresh token)* | Allow `offline_access` in **Client scopes**; request it in `OIDC_SCOPE` |
+| `microprofile-jwt` | `upn`, `groups` | Keycloak-specific; mirrors the MicroProfile JWT spec |
+
 ---
 
 ## Kanidm
@@ -94,6 +103,16 @@ providers:
 > Kanidm **requires** PKCE S256 — `pkce_method: disabled` will be rejected.
 > Kanidm uses ES256 by default and does not support RP-initiated logout.
 
+### Optional Kanidm scopes
+
+| Scope | Claims returned | How to enable |
+| --- | --- | --- |
+| `groups` | `groups` (array of group names) | Add `groups` to the `update-scope-map` command: `kanidm system oauth2 update-scope-map ssotest <group> openid email profile groups` |
+| `offline_access` | *(no claims — issues a refresh token)* | Add `offline_access` to the scope map; request it in `OIDC_SCOPE` |
+
+> The `groups` claim returns the names of Kanidm groups the user is a member of. Only groups explicitly added to the scope map are eligible — Kanidm uses this to control which group memberships are disclosed to each OAuth2 client.
+> The `roles` scope is **not** supported by Kanidm; `realm_access` / `resource_access` claims will not appear.
+
 ---
 
 ## Authentik
@@ -128,6 +147,14 @@ providers:
     pkce_method: S256
     token_signing_alg: RS256
 ```
+
+### Optional Authentik scopes
+
+| Scope | Claims returned | How to enable |
+| --- | --- | --- |
+| `groups` | `groups` (array of group names or UUIDs) | Add a **Group Membership** scope mapping in the provider's **Scope mappings** settings |
+| `offline_access` | *(no claims — issues a refresh token)* | Enable **Include Refresh Token** in the provider's advanced settings |
+| `roles` | `roles` or custom claim | Requires a custom Property Mapping that returns role data |
 
 ---
 
@@ -165,6 +192,15 @@ providers:
 
 > Entra uses RS256. The `roles` claim requires app roles to be defined and assigned in the manifest.
 
+### Optional Entra ID scopes
+
+| Scope | Claims returned | How to enable |
+| --- | --- | --- |
+| `offline_access` | *(no claims — issues a refresh token)* | Add `offline_access` to **API permissions** and to `OIDC_SCOPE` |
+| `User.Read` | Graph profile data (not standard OIDC claims) | MS Graph permission, not surfaced as JWT claims by default |
+
+> Entra exposes group membership via the `groups` claim, but it requires enabling **Group claims** in the **Token configuration** section of the app registration. For users in many groups, Entra may return a `hasgroups: true` claim instead and require a separate MS Graph call — this tool does not make that call.
+
 ---
 
 ## Okta
@@ -197,6 +233,13 @@ providers:
     pkce_method: S256
     token_signing_alg: RS256
 ```
+
+### Optional Okta scopes
+
+| Scope | Claims returned | How to enable |
+| --- | --- | --- |
+| `groups` | `groups` (array of group names) | In the **Sign-On Policy** or **Groups claim filter**, add a `groups` claim to the ID token or access token; configure it in the Okta authorization server's **Claims** settings |
+| `offline_access` | *(no claims — issues a refresh token)* | Enable **Refresh Token** in the application's **Grant type** settings |
 
 ---
 
