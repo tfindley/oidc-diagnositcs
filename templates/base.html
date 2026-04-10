@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}OIDC Diagnostic Tool{% endblock %}</title>
+  <style>
+    :root {
+      --bg:       #f0f2f5;
+      --surface:  #ffffff;
+      --surface2: #f8f9fa;
+      --border:   #dee2e6;
+      --text:     #1a1a2a;
+      --muted:    #6c757d;
+      --primary:  #4361ee;
+      --primary-h:#3451d1;
+      --green:    #198754;
+      --red:      #dc3545;
+      --yellow:   #856404;
+      --radius:   8px;
+      --mono: 'Cascadia Code','Fira Code','SF Mono',Consolas,monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: sticky; top: 0; z-index: 200;
+    }
+    .nav-brand {
+      font-weight: 700; font-size: 0.9375rem;
+      color: var(--primary); text-decoration: none;
+      display: flex; align-items: center; gap: 8px;
+      margin-right: 8px;
+    }
+    .nav-icon {
+      width: 26px; height: 26px; background: var(--primary);
+      border-radius: 6px; display: flex; align-items: center;
+      justify-content: center; color: #fff; font-size: 13px;
+    }
+    .nav-link {
+      font-size: 0.875rem; color: var(--muted); text-decoration: none;
+      padding: 5px 10px; border-radius: 6px;
+      transition: background .12s, color .12s;
+    }
+    .nav-link:hover { background: var(--bg); color: var(--text); }
+    .nav-link.active { background: #eaedfd; color: var(--primary); }
+    .nav-spacer { flex: 1; }
+    .nav-user {
+      font-size: 0.8125rem; color: var(--muted);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* ── Layout ── */
+    main { max-width: 1160px; margin: 0 auto; padding: 24px; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .card-title { font-size: 0.9375rem; font-weight: 600; }
+    .card-body { padding: 20px; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 500;
+      border: none; cursor: pointer;
+      text-decoration: none; white-space: nowrap;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-h); }
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--bg); color: var(--text); }
+    .btn-sm { padding: 4px 10px; font-size: 0.8125rem; }
+    .btn-xs { padding: 2px 7px; font-size: 0.75rem; border-radius: 4px; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block; padding: 1px 7px;
+      border-radius: 100px; font-size: 0.75rem; font-weight: 500; line-height: 1.6;
+    }
+    .badge-blue   { background: #dde3fd; color: #2b3fc4; }
+    .badge-green  { background: #d1e7dd; color: #0f5132; }
+    .badge-red    { background: #f8d7da; color: #842029; }
+    .badge-yellow { background: #fff3cd; color: #664d03; }
+    .badge-gray   { background: #e9ecef; color: #495057; }
+    .badge-purple { background: #ead6f5; color: #6f42c1; }
+
+    /* ── Tags (array values) ── */
+    .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tag {
+      background: #eaedfd; color: var(--primary);
+      padding: 1px 7px; border-radius: 4px;
+      font-family: var(--mono); font-size: 0.75rem;
+    }
+
+    /* ── Code / Pre ── */
+    code {
+      font-family: var(--mono); font-size: 0.8125rem;
+      background: var(--surface2); padding: 1px 5px; border-radius: 4px;
+    }
+    pre {
+      font-family: var(--mono); font-size: 0.8125rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px;
+      overflow-x: auto; line-height: 1.7; white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Alerts ── */
+    .alert {
+      padding: 11px 15px; border-radius: var(--radius);
+      font-size: 0.875rem; border: 1px solid transparent;
+      margin-bottom: 12px;
+    }
+    .alert-info    { background: #cff4fc; border-color: #9eebf9; color: #055160; }
+    .alert-warning { background: #fff3cd; border-color: #ffe69c; color: #664d03; }
+    .alert-error   { background: #f8d7da; border-color: #f5c2c7; color: #842029; }
+    .alert-success { background: #d1e7dd; border-color: #badbcc; color: #0f5132; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-size: 0.8125rem; font-weight: 600; color: var(--muted); background: var(--surface2); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbff; }
+
+    /* ── Claims table specifics ── */
+    .claim-key    { font-family: var(--mono); font-weight: 600; font-size: 0.8125rem; }
+    .claim-desc   { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .claim-val    { font-family: var(--mono); font-size: 0.8125rem; word-break: break-all; }
+    .sensitive    { filter: blur(5px); transition: filter .2s; cursor: pointer; }
+    .sensitive:hover { filter: blur(0); }
+    td.copy-col   { width: 36px; padding: 0 8px; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; gap: 2px;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 8px 16px; font-size: 0.875rem; font-weight: 500;
+      border: none; background: none; cursor: pointer;
+      color: var(--muted); border-bottom: 2px solid transparent;
+      margin-bottom: -2px; border-radius: 6px 6px 0 0;
+      transition: color .12s, border-color .12s, background .12s;
+    }
+    .tab-btn:hover { color: var(--text); background: var(--bg); }
+    .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-count {
+      display: inline-block; margin-left: 5px;
+      background: var(--bg); color: var(--muted);
+      font-size: 0.7rem; font-weight: 600;
+      padding: 1px 6px; border-radius: 100px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .search-input {
+      flex: 1; min-width: 180px; max-width: 300px;
+      padding: 6px 12px; border: 1px solid var(--border);
+      border-radius: 6px; font-size: 0.875rem;
+      background: var(--surface); color: var(--text);
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--primary); }
+
+    /* ── Token status bar ── */
+    .status-bar {
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap; padding: 12px 20px;
+      background: var(--surface2); border-bottom: 1px solid var(--border);
+      font-size: 0.8125rem;
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    }
+    .dot-green { background: #198754; box-shadow: 0 0 0 3px #d1e7dd; }
+    .dot-red   { background: #dc3545; box-shadow: 0 0 0 3px #f8d7da; }
+    .dot-yellow{ background: #ffc107; box-shadow: 0 0 0 3px #fff3cd; }
+
+    /* ── Details / Expandable ── */
+    details summary {
+      cursor: pointer; font-size: 0.8125rem; color: var(--muted);
+      user-select: none; list-style: none;
+    }
+    details summary::before { content: '▶ '; font-size: 0.6875rem; }
+    details[open] summary::before { content: '▼ '; }
+    details pre { margin-top: 8px; }
+
+    /* ── JWT visual split ── */
+    .jwt-parts { word-break: break-all; font-family: var(--mono); font-size: 0.75rem; line-height: 1.8; }
+    .jwt-header  { color: #e63946; }
+    .jwt-payload { color: #4361ee; }
+    .jwt-sig     { color: #6c757d; }
+    .jwt-dot     { color: var(--muted); }
+
+    /* ── Compare table ── */
+    .compare-check { color: var(--green); font-size: 1rem; }
+    .compare-miss  { color: var(--border); font-size: 1rem; }
+    .compare-mismatch td { background: #fff8f0 !important; }
+
+    /* ── Utility ── */
+    .text-muted   { color: var(--muted); }
+    .text-success { color: var(--green); }
+    .text-danger  { color: var(--red); }
+    .text-mono    { font-family: var(--mono); }
+    .mt-2  { margin-top: 8px; }
+    .mt-3  { margin-top: 12px; }
+    .mt-4  { margin-top: 16px; }
+    .mt-6  { margin-top: 24px; }
+    .gap-2 { gap: 8px; }
+    .flex  { display: flex; }
+    .wrap  { flex-wrap: wrap; }
+    .items-center { align-items: center; }
+
+    /* ── Copy flash ── */
+    .copy-flash::after {
+      content: 'Copied!'; position: fixed;
+      bottom: 24px; right: 24px;
+      background: #1a1a2a; color: #fff;
+      padding: 8px 14px; border-radius: 6px;
+      font-size: 0.8125rem;
+      animation: fadeout 1.2s forwards;
+    }
+    @keyframes fadeout {
+      0%   { opacity: 1; }
+      70%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    @media (max-width: 640px) {
+      main { padding: 16px; }
+      nav  { padding: 0 14px; }
+    }
+
+    {% block extra_css %}{% endblock %}
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="{{ url_for('index') }}" class="nav-brand">
+      <div class="nav-icon">&#9632;</div>
+      OIDC Diagnostics
+    </a>
+    <a href="{{ url_for('decode_tool') }}"
+       class="nav-link {% if request.endpoint == 'decode_tool' %}active{% endif %}">
+      JWT Decoder
+    </a>
+    {% if session.get('user') %}
+    <a href="{{ url_for('claims') }}"
+       class="nav-link {% if request.endpoint == 'claims' %}active{% endif %}">
+      Claims
+    </a>
+    {% endif %}
+    <div class="nav-spacer"></div>
+    {% if session.get('user') %}
+    <div class="nav-user">
+      <span>{{ session.get('user') }}</span>
+      <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Sign out</a>
+    </div>
+    {% endif %}
+  </nav>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, msg in messages %}
+        <div class="alert alert-{{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+  // ── Copy to clipboard ──────────────────────────────────────────────────────
+  function copyText(text) {
+    const p = navigator.clipboard
+      ? navigator.clipboard.writeText(text)
+      : Promise.resolve(legacyCopy(text));
+    p.then(() => {
+      document.body.classList.remove('copy-flash');
+      void document.body.offsetWidth; // reflow to restart animation
+      document.body.classList.add('copy-flash');
+      setTimeout(() => document.body.classList.remove('copy-flash'), 1300);
+    });
+  }
+  function legacyCopy(text) {
+    const ta = Object.assign(document.createElement('textarea'), {value: text});
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  }
+
+  // ── Tab switching ──────────────────────────────────────────────────────────
+  function initTabs(containerSel) {
+    const container = document.querySelector(containerSel);
+    if (!container) return;
+    container.addEventListener('click', e => {
+      const btn = e.target.closest('.tab-btn');
+      if (!btn) return;
+      const target = btn.dataset.tab;
+      container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+      container.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === target));
+    });
+  }
+
+  // ── Claim search / filter ──────────────────────────────────────────────────
+  function initSearch(inputSel, rowsSel) {
+    const input = document.querySelector(inputSel);
+    if (!input) return;
+    input.addEventListener('input', () => {
+      const q = input.value.toLowerCase();
+      document.querySelectorAll(rowsSel).forEach(row => {
+        const hay = (row.dataset.search || '').toLowerCase();
+        row.style.display = hay.includes(q) ? '' : 'none';
+      });
+    });
+  }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

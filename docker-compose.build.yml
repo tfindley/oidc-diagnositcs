@@ -1,0 +1,24 @@
+# Build and run the image from local source code.
+#
+# Usage:
+#   docker compose -f docker-compose.build.yml up --build
+#
+# Requires a .env file — copy .env.example and fill in your OIDC provider details.
+
+services:
+  oidc-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oidc-diagnostic-tool:local
+    ports:
+      - "${PORT:-5000}:5000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

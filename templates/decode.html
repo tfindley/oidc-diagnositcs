@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}JWT Decoder — OIDC Diagnostics{% endblock %}
+
+{% block extra_css %}
+.decode-wrap { max-width: 860px; margin: 0 auto; }
+.token-textarea {
+  width: 100%; min-height: 110px;
+  font-family: var(--mono); font-size: 0.8125rem;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px;
+  resize: vertical; color: var(--text); outline: none;
+  transition: border-color .12s; line-height: 1.6;
+}
+.token-textarea:focus { border-color: var(--primary); }
+.jwt-visual { word-break: break-all; line-height: 1.9; }
+{% endblock %}
+
+{% block content %}
+<div class="decode-wrap">
+  <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">JWT Decoder</h1>
+  <p class="text-muted" style="margin-bottom:20px;font-size:0.875rem;">
+    Paste any JWT to decode its header and payload. Signature is <strong>not verified</strong>.
+  </p>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-body">
+      <form method="post">
+        <textarea name="token" class="token-textarea"
+                  placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0..."
+                  autofocus>{{ token_input }}</textarea>
+        <div class="flex items-center gap-2 mt-3" style="flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary">Decode</button>
+          {% if token_input %}
+          <a href="{{ url_for('decode_tool') }}" class="btn btn-ghost">Clear</a>
+          {% endif %}
+          <button type="button" class="btn btn-ghost" id="paste-btn">&#x2398; Paste from clipboard</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if token_input %}
+    {% if decoded and not decoded.error %}
+
+    <!-- Visual JWT with coloured parts -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header"><span class="card-title">Token Visualised</span></div>
+      <div class="card-body">
+        <p class="text-muted" style="font-size:0.8125rem;margin-bottom:10px;">
+          <span style="color:#e63946">■</span> header &nbsp;
+          <span style="color:#4361ee">■</span> payload &nbsp;
+          <span style="color:#6c757d">■</span> signature
+        </p>
+        {% set parts = token_input.split('.') %}
+        <div class="jwt-visual">
+          <span style="color:#e63946">{{ parts[0] }}</span><span class="text-muted">.</span><span style="color:#4361ee">{{ parts[1] }}</span><span class="text-muted">.</span><span style="color:#6c757d">{{ parts[2] }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <span class="card-title">Header</span>
+        <span class="badge badge-gray" style="margin-left:auto;">
+          alg: {{ decoded.header.get('alg', '?') }} &nbsp;|&nbsp; typ: {{ decoded.header.get('typ', '?') }}
+        </span>
+        <button class="btn btn-ghost btn-sm" onclick="copyText({{ decoded.header | tojson(indent=2) | tojson }})">
+          &#x2398; Copy
+        </button>
+      </div>
+      <div class="card-body">
+        <pre>{{ decoded.header | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+
+    <!-- Payload claims table -->
+    <div class="card" style="margin-bottom:16px;" id="payload-card">
+      <div class="card-header">
+        <span class="card-title">Payload Claims</span>
+        <span class="badge badge-blue" style="margin-left:auto;">{{ claims_list | length }} claims</span>
+        <button class="btn btn-ghost btn-sm"
+                onclick="copyText({{ decoded.payload | tojson(indent=2) | tojson }})">
+          &#x2398; Copy JSON
+        </button>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="toolbar" style="padding:12px 20px 0;">
+          <input class="search-input" id="decode-search" type="search" placeholder="Search claims…" autocomplete="off">
+          <button class="btn btn-ghost btn-sm" id="mask-btn2" onclick="toggleMask2(this)">
+            &#128065; Mask sensitive
+          </button>
+        </div>
+        {% if claims_list %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:200px">Claim</th>
+                <th>Value</th>
+                <th style="width:36px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in claims_list %}
+              <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}">
+                <td>
+                  <div class="claim-key">{{ c.key }}</div>
+                  {% if c.description %}
+                  <div class="claim-desc">{{ c.description }}</div>
+                  {% endif %}
+                </td>
+                <td class="claim-val">
+                  {% if c.value_type == 'boolean' %}
+                    <span class="badge {{ 'badge-green' if c.value else 'badge-red' }}">
+                      {{ 'true' if c.value else 'false' }}
+                    </span>
+                  {% elif c.value_type == 'timestamp' %}
+                    <span class="{{ 'text-danger' if c.is_expired else '' }}">
+                      <code>{{ c.value }}</code>
+                      {% if c.formatted %}<small class="text-muted">&nbsp;({{ c.formatted }})</small>{% endif %}
+                      {% if c.is_expired %}&nbsp;<span class="badge badge-red">EXPIRED</span>{% endif %}
+                    </span>
+                  {% elif c.value_type == 'array' %}
+                    <div class="tags">{% for i in c.value %}<span class="tag">{{ i }}</span>{% endfor %}</div>
+                  {% elif c.value_type == 'object' %}
+                    <details>
+                      <summary>Object ({{ c.value | length }} key{{ 's' if c.value | length != 1 else '' }})</summary>
+                      <pre style="margin-top:8px;">{{ c.value | tojson(indent=2) }}</pre>
+                    </details>
+                  {% elif c.value_type == 'number' %}
+                    <code>{{ c.value }}</code>
+                  {% else %}
+                    <code class="{{ 'sensitive' if c.is_sensitive else '' }}">{{ c.value }}</code>
+                  {% endif %}
+                </td>
+                <td class="copy-col">
+                  <button class="btn btn-xs btn-ghost" title="Copy value"
+                          onclick="copyText({{ c.copy_value | tojson }})">&#x2398;</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% elif decoded and decoded.error %}
+    <div class="alert alert-error">
+      <strong>Decode error:</strong> {{ decoded.error }}
+    </div>
+    {% elif token_input %}
+    <div class="alert alert-warning">Not a valid JWT — must have three dot-separated base64url parts.</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Paste from clipboard
+  document.getElementById('paste-btn').addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      document.querySelector('textarea[name=token]').value = text;
+    } catch {
+      alert('Clipboard access denied — paste manually.');
+    }
+  });
+
+  // Search
+  const ds = document.getElementById('decode-search');
+  if (ds) {
+    ds.addEventListener('input', function() {
+      const q = this.value.toLowerCase();
+      document.querySelectorAll('#payload-card .claim-row').forEach(row => {
+        row.style.display = (row.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  }
+
+  // Mask sensitive
+  let masked2 = false;
+  function toggleMask2(btn) {
+    masked2 = !masked2;
+    document.querySelectorAll('#payload-card .sensitive').forEach(el => {
+      el.style.filter = masked2 ? 'blur(6px)' : '';
+    });
+    btn.classList.toggle('btn-toggle-on', masked2);
+    btn.textContent = masked2 ? '👁 Unmask sensitive' : '👁 Mask sensitive';
+  }
+</script>
+{% endblock %}
