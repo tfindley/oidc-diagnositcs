@@ -11,7 +11,7 @@ RUN groupadd --system app && useradd --system --gid app --create-home app
 # tar cannot be removed (dpkg hard-dependency), so CVE-2026-5704 is residual.
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get remove --purge -y ncurses-bin \
+ && apt-get remove --purge -y --allow-remove-essential ncurses-bin \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/*
 
