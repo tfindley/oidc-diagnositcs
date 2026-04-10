@@ -74,6 +74,36 @@
   <div style="flex:1"></div>
 </div>
 
+{# ── Scope analysis strip ── #}
+{% if scope_analysis %}
+<div class="scope-strip">
+  <span class="text-muted" style="font-size:0.75rem;margin-right:2px;">Scopes granted:</span>
+  {% for s in scope_analysis %}
+    {% if s.empty %}
+      <span class="scope-chip scope-chip-warn" title="Scope granted but no claims returned — check provider configuration">
+        &#9888; {{ s.scope }} <span class="scope-chip-count">0</span>
+      </span>
+    {% elif s.found %}
+      <span class="scope-chip scope-chip-ok" title="{{ s.found }} claim{{ 's' if s.found != 1 else '' }} returned">
+        {{ s.scope }} <span class="scope-chip-count">{{ s.found }}</span>
+      </span>
+    {% else %}
+      <span class="scope-chip scope-chip-neutral" title="No standard claims defined for this scope">
+        {{ s.scope }}
+      </span>
+    {% endif %}
+  {% endfor %}
+  {% if unconfigured_scopes %}
+  <span class="text-muted" style="font-size:0.75rem;margin-left:6px;">
+    Available but not requested:
+    {% for s in unconfigured_scopes %}
+      <code style="font-size:0.75rem;">{{ s }}</code>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+  </span>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card" id="main-tabs">
   <div style="padding: 0 20px;">
     <div class="tabs">
@@ -93,7 +123,9 @@
     </div>
   </div>
 
-  <div class="toolbar" style="padding: 0 20px 12px;">
+  <div id="scope-filter-bar" class="scope-filter-bar" style="display:none;"></div>
+
+  <div class="toolbar" style="padding: 8px 20px 12px;">
     <input class="search-input" id="claim-search" type="search" placeholder="Search claims…" autocomplete="off">
     <button class="btn btn-ghost btn-sm" onclick="toggleMask(this)" title="Blur sensitive values like sub, email, name">
       &#128065; Mask sensitive
@@ -244,19 +276,75 @@
 
 {% block scripts %}
 <script>
-  initTabs('#main-tabs');
+  // Tab persistence: save active tab so a token refresh redirect restores position.
+  // Manipulate classes directly instead of btn.click() to avoid triggering other listeners.
+  const TAB_KEY = 'oidc_active_tab';
+  (function() {
+    try {
+      const saved = sessionStorage.getItem(TAB_KEY);
+      if (saved) {
+        const container = document.querySelector('#main-tabs');
+        const btn = container && container.querySelector(`.tab-btn[data-tab="${saved}"]`);
+        if (btn) {
+          container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+          container.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === saved));
+        }
+      }
+    } catch(e) {}
+  })();
+
+  let activeScopeFilter = null;
+  const scopeFilterBar = document.getElementById('scope-filter-bar');
+
+  function refreshScopeFilter() {
+    const panel = document.querySelector('.tab-panel.active');
+    if (!panel) return;
+    const scopes = new Set();
+    panel.querySelectorAll('.claim-row[data-scope]').forEach(row => {
+      if (row.dataset.scope) scopes.add(row.dataset.scope);
+    });
+    if (scopes.size < 2) {
+      scopeFilterBar.style.display = 'none';
+      activeScopeFilter = null;
+      return;
+    }
+    if (activeScopeFilter && !scopes.has(activeScopeFilter)) activeScopeFilter = null;
+    scopeFilterBar.style.display = '';
+    const sorted = Array.from(scopes).sort();
+    scopeFilterBar.innerHTML =
+      '<span class="scope-label">Scope:</span>' +
+      ['all', ...sorted].map(s => {
+        const isActive = s === 'all' ? !activeScopeFilter : s === activeScopeFilter;
+        return `<button class="scope-pill${isActive ? ' active' : ''}"
+                        onclick="setScopeFilter('${s}')">${s === 'all' ? 'All' : s}</button>`;
+      }).join('');
+  }
+
+  function setScopeFilter(scope) {
+    activeScopeFilter = scope === 'all' ? null : scope;
+    refreshScopeFilter();
+    applyFilters();
+  }
 
   const searchInput = document.getElementById('claim-search');
-  function applySearch() {
+  function applyFilters() {
     const q = searchInput.value.toLowerCase();
     document.querySelectorAll('.tab-panel.active .claim-row').forEach(row => {
-      row.style.display = (row.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
+      const matchSearch = !q || (row.dataset.search || '').toLowerCase().includes(q);
+      const matchScope  = !activeScopeFilter || row.dataset.scope === activeScopeFilter;
+      row.style.display = (matchSearch && matchScope) ? '' : 'none';
     });
   }
-  searchInput.addEventListener('input', applySearch);
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { if (searchInput.value) setTimeout(applySearch, 10); });
+  searchInput.addEventListener('input', applyFilters);
+
+  // Use initTabs callback to handle tab switching side-effects in one place.
+  initTabs('#main-tabs', (activeTab) => {
+    try { sessionStorage.setItem(TAB_KEY, activeTab); } catch(e) {}
+    activeScopeFilter = null;
+    setTimeout(() => { refreshScopeFilter(); if (searchInput.value) applyFilters(); }, 10);
   });
+
+  refreshScopeFilter();
 
   async function copyAllJson() {
     const resp = await fetch('{{ url_for("claims_json") }}');

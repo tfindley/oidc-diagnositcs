@@ -2,6 +2,9 @@
 
 A lightweight web application that acts as an OIDC client for diagnosing SSO systems. Log in via your provider (Keycloak, Kanidm, Authentik, Entra ID, Okta, etc.) and inspect every claim from the ID token, access token, and UserInfo endpoint side by side.
 
+## Disclaimer
+This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. [CLAUDE.md](CLAUDE.md) is included for reference.
+
 ## Features
 
 - **Five-tab claims view** — ID Token · Access Token · UserInfo · Compare · Raw JWT

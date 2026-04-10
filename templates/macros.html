@@ -42,9 +42,15 @@
     </thead>
     <tbody>
       {% for c in claims %}
-      <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}">
+      <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}"
+          data-scope="{{ c.scope }}">
         <td>
-          <div class="claim-key">{{ c.key }}</div>
+          <div class="claim-key">
+            {{ c.key }}
+            {%- if c.scope and c.scope != 'openid' %}
+            <span class="scope-badge">{{ c.scope }}</span>
+            {%- endif %}
+          </div>
           {% if c.description %}<div class="claim-desc">{{ c.description }}</div>{% endif %}
         </td>
         <td class="claim-val">{{ claim_value(c) }}</td>
