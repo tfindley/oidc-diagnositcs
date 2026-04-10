@@ -319,6 +319,11 @@ def login():
         # Multi-provider mode: the index page shows per-provider buttons; /login is unused.
         return redirect(url_for('index'))
     try:
+        # Clear any existing session before starting a new login flow.
+        # Flask sessions are stored in a single signed cookie; JWT tokens stored from
+        # a previous login can fill the cookie to the 4 KB browser limit, preventing
+        # the OAuth state from being stored and causing CSRF mismatches on the callback.
+        session.clear()
         session['login_start'] = time.time()
         session['provider_id'] = PROVIDERS[0]['id']
         return oauth.create_client(PROVIDERS[0]['id']).authorize_redirect(
@@ -337,6 +342,11 @@ def login_provider(provider_id):
         flash(f'Unknown provider: {provider_id}', 'error')
         return redirect(url_for('index'))
     try:
+        # Clear any existing session before starting a new login flow.
+        # Flask sessions are stored in a single signed cookie; JWT tokens from a
+        # previous login can fill the cookie to the 4 KB browser limit, preventing
+        # the OAuth state from being stored and causing CSRF mismatches on the callback.
+        session.clear()
         session['login_start'] = time.time()
         session['provider_id'] = provider_id
         return oauth.create_client(provider_id).authorize_redirect(

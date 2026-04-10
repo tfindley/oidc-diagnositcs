@@ -50,7 +50,7 @@
         <td class="claim-val">{{ claim_value(c) }}</td>
         <td class="copy-col">
           <button class="btn btn-xs btn-ghost" title="Copy value"
-                  onclick="copyText({{ c.copy_value | tojson }})">&#x2398;</button>
+                  onclick='copyText({{ c.copy_value | tojson }})'>&#x2398;</button>
         </td>
       </tr>
       {% endfor %}

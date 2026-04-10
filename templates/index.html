@@ -142,17 +142,11 @@
         Provider configured
       {% endif %}
     </div>
+    {% if not multi_provider %}
     <div class="login-buttons">
-      {% if multi_provider %}
-        {% for p in providers %}
-        <a href="{{ url_for('login_provider', provider_id=p.id) }}" class="btn btn-primary login-btn">
-          Sign in via {{ p.name }}
-        </a>
-        {% endfor %}
-      {% else %}
-        <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">Sign in via SSO</a>
-      {% endif %}
+      <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">Sign in via SSO</a>
     </div>
+    {% endif %}
   {% else %}
     <div class="status-pill pill-err">&#9888;&nbsp; Provider not configured</div>
     <div class="alert alert-warning" style="text-align:left;">

@@ -72,10 +72,6 @@
   {% endif %}
 
   <div style="flex:1"></div>
-
-  <a href="{{ url_for('claims_json') }}" target="_blank" class="btn btn-ghost btn-sm">
-    &#123;&#125; JSON export
-  </a>
 </div>
 
 <div class="card" id="main-tabs">
@@ -216,7 +212,7 @@
     <div class="token-wrap">
       <div class="token-head">
         <span class="token-head-label">{{ label }}</span>
-        <button class="btn btn-xs btn-ghost" onclick="copyText({{ token_str | tojson }})">&#x2398; Copy</button>
+        <button class="btn btn-xs btn-ghost" onclick='copyText({{ token_str | tojson }})'>&#x2398; Copy</button>
       </div>
       <div class="token-box">
         {% set parts = token_str.split('.') %}
