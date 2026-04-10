@@ -267,6 +267,15 @@
       nav  { padding: 0 14px; }
     }
 
+    /* ── Token expiry chip (nav + claims page) ── */
+    .expiry-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 9px; border-radius: 100px; font-size: 0.75rem; font-weight: 600;
+    }
+    .chip-ok   { background: #d1e7dd; color: #0f5132; }
+    .chip-warn { background: #fff3cd; color: #664d03; }
+    .chip-bad  { background: #f8d7da; color: #842029; }
+
     /* ── Help dropdown ── */
     .help-menu { position: relative; }
     .help-dropdown {
@@ -348,9 +357,27 @@
     {% endif %}
     <div class="nav-spacer"></div>
     {% if session.get('user') %}
-    <div class="nav-user">
-      <span>{{ session.get('user') }}</span>
-      <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Sign out</a>
+    <div class="nav-user" style="display:flex;align-items:center;gap:8px;">
+      {% if nav_expires_at %}
+      <span id="nav-expiry-chip" class="expiry-chip chip-ok">
+        <span id="nav-countdown">…</span>
+      </span>
+      {% endif %}
+      <div class="help-menu" id="user-menu">
+        <button class="btn btn-ghost btn-sm" onclick="toggleUserMenu()" aria-haspopup="true">
+          {{ session.get('user') }} &#9660;
+        </button>
+        <div class="help-dropdown" id="user-dropdown" role="menu">
+          <div class="help-section-label">{{ session.get('user') }}</div>
+          <div class="help-divider"></div>
+          {% if nav_has_refresh %}
+          <a class="help-item" href="{{ url_for('token_refresh') }}">&#8635; Refresh token</a>
+          {% endif %}
+          <a class="help-item" href="{{ url_for('claims_json') }}" target="_blank">&#123;&#125; Export JSON</a>
+          <div class="help-divider"></div>
+          <a class="help-item" href="{{ url_for('logout') }}">&#x2715; Sign out</a>
+        </div>
+      </div>
     </div>
     {% endif %}
 
@@ -374,6 +401,7 @@
         <button class="help-item" onclick="showModal('modal-connectivity')">&#128268; Connectivity guide</button>
         <button class="help-item" onclick="showModal('modal-scopes')">&#128195; Scopes &amp; claims</button>
         <button class="help-item" onclick="showModal('modal-oidc-flow')">&#8594; OIDC flow</button>
+        <button class="help-item" onclick="showModal('modal-privacy')">&#128274; Data &amp; privacy</button>
       </div>
     </div>
   </nav>
@@ -510,6 +538,60 @@
     </div>
   </dialog>
 
+  <!-- ── Data & privacy modal ── -->
+  <dialog id="modal-privacy" class="modal">
+    <div class="modal-box" style="max-width:660px;">
+      <div class="modal-head">
+        <span class="modal-title">Data &amp; Privacy</span>
+        <button onclick="closeModal('modal-privacy')" class="modal-close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="margin-bottom:8px;">What this tool stores</h4>
+        <table style="margin-bottom:16px;">
+          <thead><tr><th>Data</th><th>Where</th><th>Cleared when</th></tr></thead>
+          <tbody>
+            <tr><td>ID token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+            <tr><td>Access token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+            <tr><td>Refresh token (if issued)</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+            <tr><td>UserInfo claims</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:0.875rem;margin-bottom:12px;">
+          Sessions use <strong>client-side signed cookies</strong> — token data lives in your browser,
+          not in a server-side database. The server holds tokens in memory only for the brief
+          duration of processing a request. <strong>Nothing is written to disk, a database, or
+          any external service.</strong>
+        </p>
+        <h4 style="margin-bottom:8px;">What the operator's server processes</h4>
+        <p style="font-size:0.875rem;margin-bottom:12px;">
+          The server code receives and decodes your tokens in order to render them for display.
+          It does not log token values. With <code>FLASK_DEBUG=true</code> Flask may surface
+          token data in error traces — a properly configured instance keeps debug mode off.
+        </p>
+        <p style="font-size:0.875rem;margin-bottom:12px;">
+          Your <strong>password is never seen by this tool</strong> — you authenticate directly
+          on your OIDC provider's login page.
+        </p>
+        <h4 style="margin-bottom:8px;">Third parties</h4>
+        <p style="font-size:0.875rem;margin-bottom:12px;">
+          This tool does not connect to any analytics, advertising, or tracking service.
+          The only outbound network calls it makes are to your configured OIDC provider.
+        </p>
+        <div class="alert alert-warning" style="font-size:0.875rem;">
+          <strong>Trust the operator.</strong> As with any OAuth2 client, you are trusting the
+          person who runs this instance. Only sign in with accounts whose data you are comfortable
+          sharing with the instance operator. Use the minimum scopes you need
+          (<code>openid email profile</code> is sufficient for most diagnostic purposes).
+        </div>
+        <p style="font-size:0.75rem;color:var(--muted);margin-top:12px;">
+          Source code: <a href="{{ github_url }}" target="_blank" rel="noopener">{{ github_url }}</a> —
+          licensed under the GNU Affero General Public License v3 (AGPL-3.0).
+          Modifications and deployments must make source available under the same licence.
+        </p>
+      </div>
+    </div>
+  </dialog>
+
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, msg in messages %}
@@ -522,19 +604,22 @@
   <script>
   // ── Copy to clipboard ──────────────────────────────────────────────────────
   function copyText(text) {
-    const p = navigator.clipboard
-      ? navigator.clipboard.writeText(text)
-      : Promise.resolve(legacyCopy(text));
-    p.then(() => {
+    const flash = () => {
       document.body.classList.remove('copy-flash');
       void document.body.offsetWidth; // reflow to restart animation
       document.body.classList.add('copy-flash');
       setTimeout(() => document.body.classList.remove('copy-flash'), 1300);
-    });
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(flash).catch(() => { legacyCopy(text); flash(); });
+    } else {
+      legacyCopy(text);
+      flash();
+    }
   }
   function legacyCopy(text) {
     const ta = Object.assign(document.createElement('textarea'), {value: text});
-    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
     document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
   }
@@ -587,10 +672,17 @@
   function toggleHelp() {
     document.getElementById('help-dropdown').classList.toggle('open');
   }
+  function toggleUserMenu() {
+    document.getElementById('user-dropdown').classList.toggle('open');
+  }
   document.addEventListener('click', e => {
-    const menu = document.getElementById('help-menu');
-    if (menu && !menu.contains(e.target)) {
+    const helpMenu = document.getElementById('help-menu');
+    if (helpMenu && !helpMenu.contains(e.target))
       document.getElementById('help-dropdown').classList.remove('open');
+    const userMenu = document.getElementById('user-menu');
+    if (userMenu && !userMenu.contains(e.target)) {
+      const ud = document.getElementById('user-dropdown');
+      if (ud) ud.classList.remove('open');
     }
   });
 
@@ -603,6 +695,33 @@
   document.addEventListener('click', e => {
     if (e.target.classList.contains('modal')) e.target.close();
   });
+  {% if nav_expires_at %}
+  // ── Nav token expiry countdown ────────────────────────────────────────────
+  (function() {
+    const target = {{ nav_expires_at }};
+    const chip   = document.getElementById('nav-expiry-chip');
+    const el     = document.getElementById('nav-countdown');
+    if (!chip || !el) return;
+    function fmt(s) {
+      if (s >= 3600) return Math.floor(s/3600)+'h '+(Math.floor(s/60)%60)+'m';
+      if (s >= 60)   return Math.floor(s/60)+'m '+Math.floor(s%60)+'s';
+      return s+'s';
+    }
+    function tick() {
+      const secs = Math.max(0, Math.round(target - Date.now() / 1000));
+      if (secs <= 0) {
+        chip.className = 'expiry-chip chip-bad';
+        el.textContent = 'expired';
+        clearInterval(iv);
+        return;
+      }
+      el.textContent = fmt(secs);
+      chip.className = 'expiry-chip ' + (secs < 120 ? 'chip-warn' : 'chip-ok');
+    }
+    const iv = setInterval(tick, 1000);
+    tick();
+  })();
+  {% endif %}
   </script>
   {% block scripts %}{% endblock %}
 </body>

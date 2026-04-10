@@ -4,7 +4,7 @@ import os
 import secrets
 import time
 import yaml
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import requests as http_requests
@@ -30,6 +30,27 @@ if not _secret:
     print("WARNING: SECRET_KEY not set — sessions will be lost on restart. Set it in .env")
 app.secret_key = _secret
 
+# ── Session cookie security ───────────────────────────────────────────────────
+# HttpOnly: blocks JavaScript from reading the session cookie (XSS protection).
+# SameSite=Lax: blocks the cookie being sent on cross-site POST requests (CSRF).
+# Secure: only send the cookie over HTTPS — enabled automatically when
+#   PREFERRED_URL_SCHEME=https is set, or can be forced with SESSION_COOKIE_SECURE=true.
+_force_secure = (
+    os.environ.get('PREFERRED_URL_SCHEME', '').lower() == 'https'
+    or os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY  = True,
+    SESSION_COOKIE_SAMESITE  = 'Lax',
+    SESSION_COOKIE_SECURE    = _force_secure,
+    # Sessions are non-permanent (expire on browser close) unless PERMANENT_SESSION_LIFETIME
+    # is set AND session.permanent is set to True in a route — neither happens in this app,
+    # so all sessions die when the browser tab/window is closed.
+    PERMANENT_SESSION_LIFETIME = timedelta(
+        minutes=int(os.environ.get('SESSION_LIFETIME_MINUTES', '120'))
+    ),
+)
+
 # ── OIDC config (single-provider env var fallback) ────────────────────────────
 OIDC_DISCOVERY_URL     = os.environ.get('OIDC_DISCOVERY_URL', '')
 OIDC_CLIENT_ID         = os.environ.get('OIDC_CLIENT_ID', '')
@@ -39,9 +60,18 @@ OIDC_PKCE_METHOD       = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
 OIDC_TOKEN_SIGNING_ALG = os.environ.get('OIDC_TOKEN_SIGNING_ALG', '').strip()
 
 # ── UI config ─────────────────────────────────────────────────────────────────
-SHOW_CONFIG = os.environ.get('SHOW_CONFIG', 'false').lower() == 'true'
-GITHUB_URL  = 'https://github.com/tfindley/oidc-diagnositcs'
-KOFI_URL    = 'https://ko-fi.com/tfindley'
+SHOW_CONFIG     = os.environ.get('SHOW_CONFIG', 'false').lower() == 'true'
+# Show a prominent privacy/data-handling notice on the landing page.
+# Recommended for any public or shared deployment.
+PRIVACY_NOTICE  = os.environ.get('PRIVACY_NOTICE', 'false').lower() == 'true'
+# Optional custom message shown on the landing page before the login button.
+# BANNER_TYPE controls the style: info (default), warning, error, success.
+BANNER_TEXT     = os.environ.get('BANNER_TEXT', '').strip()
+BANNER_TYPE     = os.environ.get('BANNER_TYPE', 'info').strip().lower()
+if BANNER_TYPE not in {'info', 'warning', 'error', 'success'}:
+    BANNER_TYPE = 'info'
+GITHUB_URL      = 'https://github.com/tfindley/oidc-diagnositcs'
+KOFI_URL        = 'https://ko-fi.com/tfindley'
 
 # ── Multi-provider configuration ──────────────────────────────────────────────
 # If providers.yml is present it overrides the single-provider env var config.
@@ -153,10 +183,17 @@ for _p in PROVIDERS:
 @app.context_processor
 def inject_globals():
     """Make site-wide config available in all templates without explicit passing."""
+    raw = session.get('raw_tokens') if session.get('user') else None
     return {
-        'github_url': GITHUB_URL,
-        'kofi_url':   KOFI_URL,
-        'show_config': SHOW_CONFIG,
+        'github_url':      GITHUB_URL,
+        'kofi_url':        KOFI_URL,
+        'show_config':     SHOW_CONFIG,
+        'privacy_notice':  PRIVACY_NOTICE,
+        'banner_text':     BANNER_TEXT,
+        'banner_type':     BANNER_TYPE,
+        'flask_debug':     app.debug,
+        'nav_expires_at':  raw.get('expires_at') if raw else None,
+        'nav_has_refresh': bool(raw.get('refresh_token')) if raw else False,
     }
 
 
@@ -508,11 +545,14 @@ def logout():
 
 @app.route('/api/connectivity')
 def api_connectivity():
-    """Server-side check: can this app reach the OIDC discovery URL?"""
-    if not OIDC_DISCOVERY_URL:
-        return jsonify({'status': 'unconfigured', 'message': 'No OIDC_DISCOVERY_URL set'})
+    """Server-side check: can the app reach an OIDC discovery URL?
+    Accepts optional ?url= to check a specific provider's URL (used in multi-provider mode).
+    Falls back to OIDC_DISCOVERY_URL when ?url is not supplied."""
+    url = request.args.get('url') or OIDC_DISCOVERY_URL
+    if not url:
+        return jsonify({'status': 'unconfigured', 'message': 'No discovery URL configured'})
     try:
-        resp = http_requests.get(OIDC_DISCOVERY_URL, timeout=5)
+        resp = http_requests.get(url, timeout=5)
         resp.raise_for_status()
         data = resp.json()
         return jsonify({
@@ -531,17 +571,20 @@ def api_connectivity():
 @app.route('/api/discovery')
 def api_discovery():
     """Fetch and return the raw OIDC discovery document, augmented with
-    which algorithms/methods are currently configured in this app."""
-    if not OIDC_DISCOVERY_URL:
-        return jsonify({'error': 'No OIDC_DISCOVERY_URL configured'})
+    which algorithms/methods are currently configured in this app.
+    Accepts optional ?url=, ?pkce=, ?alg= for per-provider use in multi-provider mode."""
+    url  = request.args.get('url')  or OIDC_DISCOVERY_URL
+    pkce = request.args.get('pkce') or OIDC_PKCE_METHOD
+    alg  = request.args.get('alg')  or OIDC_TOKEN_SIGNING_ALG or None
+    if not url:
+        return jsonify({'error': 'No discovery URL configured'})
     try:
-        resp = http_requests.get(OIDC_DISCOVERY_URL, timeout=5)
+        resp = http_requests.get(url, timeout=5)
         resp.raise_for_status()
         data = resp.json()
         data['_app_config'] = {
-            'pkce_method':       OIDC_PKCE_METHOD,
-            'token_signing_alg': OIDC_TOKEN_SIGNING_ALG or None,
-            'scope':             OIDC_SCOPE,
+            'pkce_method':       pkce,
+            'token_signing_alg': alg,
             'latency_ms':        int(resp.elapsed.total_seconds() * 1000),
         }
         return jsonify(data)

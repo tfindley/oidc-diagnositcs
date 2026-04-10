@@ -8,7 +8,7 @@ A lightweight web application that acts as an OIDC client for diagnosing SSO sys
 - **Compare tab** — shows every unique claim key across all three sources and flags ⚠ where the same claim has different values
 - **Live search** — filter claims by name or value instantly
 - **Mask sensitive values** — blur `sub`, `email`, `name`, etc. for safe screenshotting
-- **Token expiry countdown** — live timer showing how long the session token remains valid
+- **Token expiry countdown** — live timer in the navigation bar showing how long the session token remains valid
 - **Token refresh** — refresh the access token without signing out (if provider issues refresh tokens)
 - **Copy buttons** — per-claim copy and full JSON export
 - **Standalone JWT decoder** — paste any token and decode it without logging in
@@ -17,6 +17,7 @@ A lightweight web application that acts as an OIDC client for diagnosing SSO sys
 - **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported (Keycloak)
 - **PKCE S256** — enabled by default; required by Kanidm, recommended everywhere
 - **ES256 / RS256** — configurable token signing algorithm enforcement
+- **Multi-provider support** — configure multiple OIDC providers via `providers.yml`; each gets its own login button and callback URL
 - **Help menu** — connectivity guide, scope reference, and OIDC flow diagram
 
 ---
@@ -42,120 +43,61 @@ Then open [http://localhost:5000](http://localhost:5000).
 
 ---
 
+## Multi-Provider Setup
+
+To configure more than one OIDC provider, use `providers.yml` instead of `.env` variables.
+
+**1. Copy the example file:**
+
+```bash
+cp providers.example.yml providers.yml
+```
+
+**2. Edit `providers.yml`** with your provider details. Each provider entry requires:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | Yes | Display name shown on the login button |
+| `id` | Yes | URL-safe identifier — used in `/login/<id>` and `/callback/<id>` |
+| `discovery_url` | Yes | Provider's `/.well-known/openid-configuration` URL |
+| `client_id` | Yes | OAuth2 client ID |
+| `client_secret` | Yes | OAuth2 client secret |
+| `scope` | No | Space-separated scopes (default: `openid email profile`) |
+| `pkce_method` | No | `S256`, `plain`, or `disabled` (default: `S256`) |
+| `token_signing_alg` | No | `ES256` or `RS256`; leave unset to accept server default |
+
+**3. Register the callback URL** in each OIDC provider:
+
+```text
+https://<your-app>/callback/<id>
+```
+
+For example, a provider with `id: keycloak-dev` needs:
+
+```text
+https://your-app/callback/keycloak-dev
+```
+
+**4. Mount into Docker:**
+
+```yaml
+volumes:
+  - ./providers.yml:/app/providers.yml:ro
+```
+
+When `providers.yml` is present it completely overrides the single-provider env var config. When it is absent, the app falls back to `OIDC_*` env vars as before.
+
+---
+
 ## Provider Setup Guides
 
-### Keycloak
-
-1. In your realm go to **Clients** → **Create client**
-2. Set **Client type** to `OpenID Connect`
-3. Enable **Client authentication** (confidential)
-4. Set **Valid redirect URIs**: `https://your-app/callback`
-5. Set **Web origins**: `https://your-app`
-6. Under the **Credentials** tab, copy the client secret
-7. Optional: under **Client scopes**, add `roles` if you want realm/resource role claims
-
-```env
-OIDC_DISCOVERY_URL=http://keycloak:8080/realms/<realm>/.well-known/openid-configuration
-OIDC_CLIENT_ID=oidc-diagnostic
-OIDC_CLIENT_SECRET=<from credentials tab>
-OIDC_SCOPE=openid email profile roles
-OIDC_PKCE_METHOD=S256
-OIDC_TOKEN_SIGNING_ALG=RS256
-```
-
-> Keycloak defaults to RS256 for token signing. ES256 can be enabled per-realm under **Realm settings → Tokens → Default signature algorithm**.
-
----
-
-### Kanidm
-
-1. As an admin, create an OAuth2 resource server:
-
-```bash
-kanidm system oauth2 create ssotest "OIDC Diagnostic" https://your-app/callback
-kanidm system oauth2 update-scope-map ssotest <group> openid email profile
-kanidm system oauth2 show-enable-pkce ssotest
-```
-
-1. Get the client secret:
-
-```bash
-kanidm system oauth2 show-basic-secret ssotest
-```
-
-```env
-OIDC_DISCOVERY_URL=https://kanidm.example.com/oauth2/openid/ssotest/.well-known/openid-configuration
-OIDC_CLIENT_ID=ssotest
-OIDC_CLIENT_SECRET=<from show-basic-secret>
-OIDC_SCOPE=openid email profile
-OIDC_PKCE_METHOD=S256
-OIDC_TOKEN_SIGNING_ALG=ES256
-```
-
-> Kanidm **requires** PKCE S256 — `OIDC_PKCE_METHOD=disabled` will be rejected.
-> Kanidm uses ES256 by default and does not support RP-initiated logout.
-
----
-
-### Authentik
-
-1. Go to **Applications** → **Providers** → **Create** → **OAuth2/OpenID Provider**
-2. Set **Redirect URIs**: `https://your-app/callback`
-3. Under **Advanced settings**, set **Subject mode** and note the signing key
-4. Create an **Application** and link it to the provider
-5. Copy the **Client ID** and **Client Secret** from the provider page
-
-```env
-OIDC_DISCOVERY_URL=https://authentik.example.com/application/o/<slug>/.well-known/openid-configuration
-OIDC_CLIENT_ID=<client id>
-OIDC_CLIENT_SECRET=<client secret>
-OIDC_SCOPE=openid email profile
-OIDC_PKCE_METHOD=S256
-OIDC_TOKEN_SIGNING_ALG=RS256
-```
-
----
-
-### Microsoft Entra ID (Azure AD)
-
-1. Go to **Azure Portal** → **App registrations** → **New registration**
-2. Set **Redirect URI** (Web): `https://your-app/callback`
-3. Under **Certificates & secrets**, create a **Client secret**
-4. Under **API permissions**, add `openid`, `email`, `profile`
-
-```env
-OIDC_DISCOVERY_URL=https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
-OIDC_CLIENT_ID=<application/client id>
-OIDC_CLIENT_SECRET=<client secret value>
-OIDC_SCOPE=openid email profile
-OIDC_PKCE_METHOD=S256
-OIDC_TOKEN_SIGNING_ALG=RS256
-```
-
-> Entra uses RS256. The `roles` claim requires app roles to be defined and assigned in the manifest.
-
----
-
-### Okta
-
-1. Go to **Applications** → **Create App Integration** → **OIDC - OpenID Connect** → **Web Application**
-2. Set **Sign-in redirect URIs**: `https://your-app/callback`
-3. Copy the **Client ID** and **Client secret**
-
-```env
-OIDC_DISCOVERY_URL=https://<your-okta-domain>/oauth2/default/.well-known/openid-configuration
-OIDC_CLIENT_ID=<client id>
-OIDC_CLIENT_SECRET=<client secret>
-OIDC_SCOPE=openid email profile groups
-OIDC_PKCE_METHOD=S256
-OIDC_TOKEN_SIGNING_ALG=RS256
-```
+See [PROVIDERS.md](docs/PROVIDERS.md) for guides on how to add the OIDC Diagnostics app as a client.
 
 ---
 
 ## Configuration Reference
 
-All configuration is via environment variables in a `.env` file.
+All single-provider configuration is via environment variables in a `.env` file. When `providers.yml` is present, the `OIDC_*` variables are ignored.
 
 ### OIDC Provider
 
@@ -174,16 +116,19 @@ All configuration is via environment variables in a `.env` file.
 | --- | --- | --- | --- |
 | `SECRET_KEY` | Yes | *(random, ephemeral)* | Flask session key — set a fixed value or sessions won't survive restarts |
 | `PORT` | No | `5000` | Port to listen on |
-| `FLASK_DEBUG` | No | `false` | Enable Flask debug mode — never use in production |
+| `FLASK_DEBUG` | No | `false` | Enable Flask debug mode — **never use in production** |
 | `PREFERRED_URL_SCHEME` | No | *(auto)* | Force `https` in callback URLs if your proxy doesn't send `X-Forwarded-Proto` |
+| `SESSION_COOKIE_SECURE` | No | `false`* | Force the `Secure` flag on the session cookie (*auto-set when `PREFERRED_URL_SCHEME=https`) |
+| `SESSION_LIFETIME_MINUTES` | No | `120` | Max lifetime for permanent sessions; sessions in this app are non-permanent and expire on browser close |
 
 ### UI
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `SHOW_CONFIG` | No | `false` | Show the configuration card (discovery URL, client ID, etc.) on the landing page |
-| `GITHUB_URL` | No | *(repo)* | URL shown in the Help → Source code link |
-| `KOFI_URL` | No | *(hidden)* | Ko-fi URL shown in the Help menu; hidden if unset |
+| `SHOW_CONFIG` | No | `false` | Show the configuration card on the landing page (client ID is always masked — click to reveal) |
+| `PRIVACY_NOTICE` | No | `false` | Show a data-handling notice on the landing page — recommended for public or shared deployments |
+| `BANNER_TEXT` | No | *(hidden)* | Custom message shown on the landing page before the login button — useful for demo or maintenance notices |
+| `BANNER_TYPE` | No | `info` | Style of the custom banner: `info`, `warning`, `error`, or `success` |
 
 ---
 
@@ -194,21 +139,39 @@ All configuration is via environment variables in a `.env` file.
 | `openid` | `sub`, `iss`, `aud`, `exp`, `iat` | Required |
 | `email` | `email`, `email_verified` | OIDC |
 | `profile` | `name`, `given_name`, `family_name`, `preferred_username`, `picture`, `locale`, `zoneinfo`, `updated_at` | OIDC |
-| `address` | `address` | OIDC |
-| `phone` | `phone_number`, `phone_number_verified` | OIDC |
+| `address` | `address` | OIDC — rarely used |
+| `phone` | `phone_number`, `phone_number_verified` | OIDC — rarely used |
 | `offline_access` | *(no new claims — requests a refresh token)* | OIDC |
 | `roles` | `realm_access`, `resource_access` | Keycloak-specific |
 | `groups` | `groups` | Provider-specific |
 
-Additional claims beyond these are typically available via **custom scopes** configured in your provider. The **Provider Metadata** panel on the home page lists `claims_supported` — every claim the server can return. If a claim you expect isn't appearing, check whether the required scope is in `OIDC_SCOPE` and is granted in your client's scope configuration.
+Additional claims beyond these are typically available via **custom scopes** configured in your provider. The **Provider Metadata** panel on the home page lists `claims_supported` — every claim the server can return.
 
 ---
 
 ## Logout
 
-The **Sign out** button attempts RP-initiated logout: it redirects the browser to the provider's `end_session_endpoint` with the current ID token, which terminates the SSO session server-side. If the provider doesn't support this (e.g. Kanidm), a local-only session clear happens instead.
+The **Sign out** option in the user menu attempts **RP-initiated logout**: it redirects the browser to the provider's `end_session_endpoint` with the current ID token as `id_token_hint`, which terminates the SSO session server-side. If the provider doesn't support this endpoint (e.g. Kanidm), a local-only session clear happens instead.
 
-To enable RP-initiated logout in Keycloak, register `https://your-app/` as a **Valid post-logout redirect URI** in your client settings.
+### Keycloak — RP-initiated logout setup
+
+In Keycloak, register the app's base URL as a **Valid post-logout redirect URI** in your client settings:
+
+```text
+https://your-app/
+```
+
+After signing out the browser will be redirected back to the app's landing page.
+
+### Logout endpoint — what this app does and doesn't support
+
+| Logout type | Description | Supported |
+| --- | --- | --- |
+| **RP-initiated logout** | App redirects browser to provider's `end_session_endpoint` to terminate the SSO session | ✓ Yes |
+| **Frontchannel logout** | Provider loads the app's logout URL in a hidden iframe to notify it of a logout | ✗ No |
+| **Backchannel logout** | Provider POSTs a signed JWT to the app's logout URL (server-to-server) | ✗ No |
+
+This is a diagnostic tool; frontchannel and backchannel logout are not implemented. Pointing Keycloak's **Backchannel Logout URL** at `/logout` will not work — the route expects a browser redirect, not a server-side POST.
 
 ---
 
@@ -253,6 +216,48 @@ Multi-arch: `linux/amd64` on every build; `linux/amd64` + `linux/arm64` on versi
 
 ---
 
+## Data Handling & Privacy
+
+### What the app stores
+
+| Data | Where stored | When cleared |
+| --- | --- | --- |
+| ID token (JWT string) | Browser session cookie | Browser close or Sign out |
+| Access token (JWT string) | Browser session cookie | Browser close or Sign out |
+| Refresh token (if issued) | Browser session cookie | Browser close or Sign out |
+| UserInfo claims (JSON) | Browser session cookie | Browser close or Sign out |
+| Display username | Browser session cookie | Browser close or Sign out |
+
+Flask sessions are **client-side signed cookies** — data lives in the browser cookie, not in a server-side database. The server reads and re-signs the cookie on each request, so tokens are only in server memory for the brief duration of processing a single request. Nothing is written to disk, a database, or any external service.
+
+Sessions in this app are **non-permanent**: they expire when the browser is closed, regardless of any session lifetime configuration.
+
+### What operators can and cannot see
+
+| | Can the operator see it? |
+| --- | --- |
+| User's **password** | **No.** Users authenticate directly on the OIDC provider's login page. This app never receives or handles passwords. |
+| **Authorization code** | Briefly, in the `/callback?code=…` URL. Codes are single-use and expire within seconds of being issued. Server access logs may record this URL. |
+| **Access / ID tokens** | In principle yes — the server code receives and processes them to decode and display claims. The default code does not log tokens. `FLASK_DEBUG=true` can surface them in error pages; never enable debug mode on a public instance. |
+| **User profile claims** | In principle yes, for the same reason — the server renders them into HTML. |
+| **Refresh token** | In principle yes, if the provider issued one. Not requested unless `offline_access` is in the configured scopes. |
+
+This is the same trust model as any OAuth2 confidential client. Users should only authenticate with instances operated by people they trust, and should grant the minimum scopes needed.
+
+### Recommendations for public deployments
+
+- Set `PRIVACY_NOTICE=true` to display a data-handling statement on the landing page.
+- Keep `FLASK_DEBUG=false` (the default). Debug mode can expose token values in error traces.
+- Run behind HTTPS and set `PREFERRED_URL_SCHEME=https` so the session cookie carries the `Secure` flag and cannot be sent over plain HTTP.
+- Request the minimum scopes: `openid email profile` is sufficient to demonstrate the OIDC flow without granting broader permissions.
+- Do **not** request `offline_access` on a public demo — doing so causes the provider to issue a long-lived refresh token that is then held in the user's session cookie.
+- Treat your server access logs as sensitive; they may contain short-lived authorization codes.
+- Set a strong, random `SECRET_KEY` — this signs and verifies every session cookie.
+
+**Recommended for a quick public demo:** Google is the easiest to set up (15 minutes, no server, free) and has the widest reach — any visitor can test with their existing Google account. Set `OIDC_SCOPE=openid email profile`, request only the scopes you need, and set `PRIVACY_NOTICE=true`.
+
+---
+
 ## Security Note
 
-This tool is intended for **internal diagnostic use only**. It stores raw token strings in a server-side session and decodes JWTs **without signature verification**. Do not expose it to the public internet. Use `SHOW_CONFIG=false` (the default) when the landing page may be seen by users who should not see your client credentials or discovery URL.
+This tool is intended for **diagnostic use**. It decodes JWTs **without signature verification** — do not use it to make security decisions about token validity. Do not expose it to the public internet without HTTPS, `PRIVACY_NOTICE=true`, and an understanding of the data-handling properties described above. Use `SHOW_CONFIG=false` (the default) to avoid exposing client credentials or discovery URLs on the landing page.

@@ -8,14 +8,6 @@
   margin-bottom: 20px; flex-wrap: wrap;
 }
 .page-title { font-size: 1.25rem; font-weight: 700; }
-.expiry-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 12px; border-radius: 100px; font-size: 0.8125rem; font-weight: 500;
-}
-.chip-ok  { background: #d1e7dd; color: #0f5132; }
-.chip-bad { background: #f8d7da; color: #842029; }
-.chip-warn{ background: #fff3cd; color: #664d03; }
-
 /* Raw JWT section: flex wrapper keeps copy btn outside the scroll area */
 .token-wrap { margin-bottom: 14px; }
 .token-head {
@@ -81,15 +73,9 @@
 
   <div style="flex:1"></div>
 
-  {% if has_refresh_token %}
-  <a href="{{ url_for('token_refresh') }}" class="btn btn-ghost btn-sm" title="Use the refresh token to get a new access token and re-render claims">
-    &#8635; Refresh token
-  </a>
-  {% endif %}
   <a href="{{ url_for('claims_json') }}" target="_blank" class="btn btn-ghost btn-sm">
     &#123;&#125; JSON export
   </a>
-  <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Sign out</a>
 </div>
 
 <div class="card" id="main-tabs">
