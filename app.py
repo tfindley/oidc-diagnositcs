@@ -209,6 +209,11 @@ CLAIM_DESCRIPTIONS = {
     'unique_name': 'Unique Name — Azure AD display name',
 }
 
+def _get_provider(provider_id: str, default=None):
+    """Return the provider config dict matching provider_id, or default."""
+    return next((p for p in PROVIDERS if p['id'] == provider_id), default)
+
+
 # ── OAuth registration ────────────────────────────────────────────────────────
 oauth = OAuth(app)
 for _p in PROVIDERS:
@@ -384,7 +389,7 @@ def login():
 @app.route('/login/<provider_id>')
 def login_provider(provider_id):
     """Multi-provider mode: initiate OIDC login for a specific provider."""
-    provider = next((p for p in PROVIDERS if p['id'] == provider_id), None)
+    provider = _get_provider(provider_id)
     if not provider:
         flash(f'Unknown provider: {provider_id}', 'error')
         return redirect(url_for('index'))
@@ -406,7 +411,7 @@ def login_provider(provider_id):
 
 def _handle_callback(provider_id: str):
     """Shared login callback logic for both single- and multi-provider routes."""
-    provider = next((p for p in PROVIDERS if p['id'] == provider_id), None)
+    provider = _get_provider(provider_id)
     if not provider:
         flash(f'Unknown provider: {provider_id}', 'error')
         return redirect(url_for('index'))
@@ -425,15 +430,22 @@ def _handle_callback(provider_id: str):
     if 'login_start' in session:
         login_duration = round(time.time() - session.pop('login_start'), 2)
 
-    # Store discovery metadata for scope analysis on the claims page.
-    # load_server_metadata() uses Authlib's cached metadata (no extra HTTP request).
-    provider_cfg = next((p for p in PROVIDERS if p['id'] == provider_id), {})
-    session['configured_scope'] = provider_cfg.get('scope', 'openid email profile')
+    # Store scope info for analysis on the claims page.
+    # load_server_metadata() uses Authlib's cached metadata — no extra HTTP request.
+    # Store only the filtered unconfigured list rather than the full scopes_supported
+    # to keep session cookie size small.
+    configured_scope = provider.get('scope', 'openid email profile')
+    session['configured_scope'] = configured_scope
+    configured_scope_set = set(configured_scope.split())
     try:
         meta = oauth.create_client(provider_id).load_server_metadata()
-        session['scopes_supported'] = list(meta.get('scopes_supported') or [])
+        scopes_supported = meta.get('scopes_supported') or []
+        session['unconfigured_scopes'] = sorted(
+            s for s in scopes_supported
+            if s not in configured_scope_set and s in _INTERESTING_SCOPES
+        )
     except Exception:
-        session['scopes_supported'] = []
+        session['unconfigured_scopes'] = []
 
     session['provider_id'] = provider_id
     session['raw_tokens'] = {
@@ -498,31 +510,21 @@ def claims():
 
     has_refresh_token = bool(raw_tokens.get('refresh_token'))
 
-    # ── Scope analysis ────────────────────────────────────────────────────────
-    # Use the scope string from the token response; fall back to what was configured.
+    # Scope analysis: use the scope string the server echoed back, fall back to configured.
+    # offline_access intentionally yields no claims (it's a refresh token grant, not a claims scope).
     granted_scope_str = raw_tokens.get('scope', '') or session.get('configured_scope', '')
-    granted_scopes = granted_scope_str.split() if granted_scope_str else []
     all_claim_keys = set(id_payload) | set(access_payload) | set(userinfo)
-
     scope_analysis = []
-    for scope in sorted(set(granted_scopes)):
+    for scope in sorted(set(granted_scope_str.split())):
         known = _SCOPE_KNOWN_CLAIMS.get(scope, frozenset())
         found = len(known & all_claim_keys) if known else 0
         scope_analysis.append({
             'scope': scope,
-            'has_known_claims': bool(known),
             'found': found,
-            # Warn only when we know what claims to expect but got none.
-            # offline_access intentionally yields no claims (it's a refresh token grant).
             'empty': bool(known) and found == 0,
         })
 
-    scopes_supported = session.get('scopes_supported', [])
-    configured_scope_set = set(session.get('configured_scope', '').split())
-    unconfigured_scopes = sorted([
-        s for s in scopes_supported
-        if s not in configured_scope_set and s in _INTERESTING_SCOPES
-    ])
+    unconfigured_scopes = session.get('unconfigured_scopes', [])
 
     return render_template('claims.html',
         username=session.get('user'),

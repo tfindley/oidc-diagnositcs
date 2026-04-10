@@ -83,7 +83,7 @@
       <span class="scope-chip scope-chip-warn" title="Scope granted but no claims returned — check provider configuration">
         &#9888; {{ s.scope }} <span class="scope-chip-count">0</span>
       </span>
-    {% elif s.has_known_claims %}
+    {% elif s.found %}
       <span class="scope-chip scope-chip-ok" title="{{ s.found }} claim{{ 's' if s.found != 1 else '' }} returned">
         {{ s.scope }} <span class="scope-chip-count">{{ s.found }}</span>
       </span>
@@ -276,26 +276,23 @@
 
 {% block scripts %}
 <script>
-  initTabs('#main-tabs');
-
-  // ── Tab persistence: survive token-refresh redirect ──────────────────────
+  // Tab persistence: save active tab so a token refresh redirect restores position.
+  // Manipulate classes directly instead of btn.click() to avoid triggering other listeners.
+  const TAB_KEY = 'oidc_active_tab';
   (function() {
-    const KEY = 'oidc_active_tab';
     try {
-      const saved = sessionStorage.getItem(KEY);
+      const saved = sessionStorage.getItem(TAB_KEY);
       if (saved) {
-        const btn = document.querySelector(`.tab-btn[data-tab="${saved}"]`);
-        if (btn) btn.click();
+        const container = document.querySelector('#main-tabs');
+        const btn = container && container.querySelector(`.tab-btn[data-tab="${saved}"]`);
+        if (btn) {
+          container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+          container.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === saved));
+        }
       }
     } catch(e) {}
-    document.querySelectorAll('#main-tabs .tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        try { sessionStorage.setItem(KEY, btn.dataset.tab); } catch(e) {}
-      });
-    });
   })();
 
-  // ── Scope filter ──────────────────────────────────────────────────────────
   let activeScopeFilter = null;
   const scopeFilterBar = document.getElementById('scope-filter-bar');
 
@@ -311,7 +308,6 @@
       activeScopeFilter = null;
       return;
     }
-    // If current filter is for a scope not in this tab, reset it
     if (activeScopeFilter && !scopes.has(activeScopeFilter)) activeScopeFilter = null;
     scopeFilterBar.style.display = '';
     const sorted = Array.from(scopes).sort();
@@ -330,7 +326,6 @@
     applyFilters();
   }
 
-  // ── Combined search + scope filter ────────────────────────────────────────
   const searchInput = document.getElementById('claim-search');
   function applyFilters() {
     const q = searchInput.value.toLowerCase();
@@ -342,15 +337,13 @@
   }
   searchInput.addEventListener('input', applyFilters);
 
-  // Re-apply filters and refresh scope pills when switching tabs
-  document.querySelectorAll('#main-tabs .tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeScopeFilter = null;
-      setTimeout(() => { refreshScopeFilter(); if (searchInput.value) applyFilters(); }, 10);
-    });
+  // Use initTabs callback to handle tab switching side-effects in one place.
+  initTabs('#main-tabs', (activeTab) => {
+    try { sessionStorage.setItem(TAB_KEY, activeTab); } catch(e) {}
+    activeScopeFilter = null;
+    setTimeout(() => { refreshScopeFilter(); if (searchInput.value) applyFilters(); }, 10);
   });
 
-  // Initial scope filter render for the active tab on page load
   refreshScopeFilter();
 
   async function copyAllJson() {

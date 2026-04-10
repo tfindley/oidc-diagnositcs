@@ -658,7 +658,7 @@
   }
 
   // ── Tab switching ──────────────────────────────────────────────────────────
-  function initTabs(containerSel) {
+  function initTabs(containerSel, onTabChange) {
     const container = document.querySelector(containerSel);
     if (!container) return;
     container.addEventListener('click', e => {
@@ -667,6 +667,7 @@
       const target = btn.dataset.tab;
       container.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
       container.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === target));
+      if (onTabChange) onTabChange(target);
     });
   }
 
