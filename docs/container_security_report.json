@@ -1,14 +1,14 @@
 {
-  "image": "ghcr.io/tfindley/sso_oidc_client_tool:latest",
+  "image": "ghcr.io/tfindley/oidc-diagnositcs:latest",
   "scanner": "grype",
-  "scanDuration": 4250,
+  "scanDuration": 4205,
   "summary": {
     "critical": 0,
-    "high": 16,
-    "medium": 31,
-    "low": 14,
-    "negligible": 51,
-    "unknown": 15
+    "high": 8,
+    "medium": 25,
+    "low": 12,
+    "negligible": 50,
+    "unknown": 0
   },
   "vulnerabilities": [
     {
@@ -36,16 +36,6 @@
       "version": "1.35+dfsg-3.1",
       "description": "Tar 1.15.1 does not properly warn the user when extracting setuid or setgid files, which may allow local users or remote attackers to gain privileges.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2005-2541",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2025-13836",
-      "severity": "high",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.11",
-      "description": "When reading an HTTP response from a server, if no read amount is specified, the default behavior will be to use Content-Length. This allows a malicious server to cause the client to read large amounts of data into memory, potentially causing OOM or other DoS.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-13836",
       "scanner": "grype"
     },
     {
@@ -85,20 +75,10 @@
       "scanner": "grype"
     },
     {
-      "id": "CVE-2026-3644",
-      "severity": "medium",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "The fix for CVE-2026-0672, which rejected control characters in http.cookies.Morsel, was incomplete. The Morsel.update(), |= operator, and unpickling paths were not patched, allowing control characters to bypass input validation. Additionally, BaseCookie.js_output() lacked the output validation applied to BaseCookie.output().",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2026-3644",
-      "scanner": "grype"
-    },
-    {
       "id": "CVE-2025-15366",
       "severity": "medium",
       "package": "python",
-      "version": "3.12.13",
+      "version": "3.13.13",
       "fixedVersion": "3.15.0a6",
       "description": "The imaplib module, when passed a user-controlled command, can have additional commands injected using newlines. Mitigation rejects commands containing control characters.",
       "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-15366",
@@ -108,7 +88,7 @@
       "id": "CVE-2025-15367",
       "severity": "medium",
       "package": "python",
-      "version": "3.12.13",
+      "version": "3.13.13",
       "fixedVersion": "3.15.0a6",
       "description": "The poplib module, when passed a user-controlled command, can have\nadditional commands injected using newlines. Mitigation rejects commands\ncontaining control characters.",
       "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-15367",
@@ -184,36 +164,6 @@
       "version": "2.41-12+deb13u2",
       "description": "Calling gethostbyaddr or gethostbyaddr_r with a configured nsswitch.conf that specifies the library's DNS backend in the GNU C Library version 2.34 to version 2.43 could, with a crafted response from the configured DNS server, result in a violation of the DNS specification that causes the application to treat a non-answer section of the DNS response as a valid answer.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2026-4437",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-2673",
-      "severity": "high",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An OpenSSL TLS 1.3 server may fail to negotiate the expected preferred key exchange group when its key exchange group configuration includes the default by using the 'DEFAULT' keyword.  Impact summary: A less preferred key exchange may be used even when a more preferred group is supported by both client and server, if the group was not included among the client's initial predicated keyshares. This will sometimes be the case with the new hybrid post-quantum groups, if the client chooses to defer their use until specifically requested by the server.  If an OpenSSL TLS 1.3 server's configuration uses the 'DEFAULT' keyword to interpolate the built-in default group list into its own configuration, perhaps adding or removing specific elements, then an implementation defect causes the 'DEFAULT' list to lose its 'tuple' structure, and all server-supported groups were treated as a single sufficiently secure 'tuple', with the server not sending a Hello Retry Request (HRR) even when a group in a more preferred tuple was mutually supported.  As a result, the client and server might fail to negotiate a mutually supported post-quantum key agreement group, such as 'X25519MLKEM768', if the client's configuration results in only 'classical' groups (such as 'X25519' being the only ones in the client's initial keyshare prediction).  OpenSSL 3.5 and later support a new syntax for selecting the most preferred TLS 1.3 key agreement group on TLS servers.  The old syntax had a single 'flat' list of groups, and treated all the supported groups as sufficiently secure. If any of the keyshares predicted by the client were supported by the server the most preferred among these was selected, even if other groups supported by the client, but not included in the list of predicted keyshares would have been more preferred, if included.  The new syntax partitions the groups into distinct 'tuples' of roughly equivalent security.  Within each tuple the most preferred group included among the client's predicted keyshares is chosen, but if the client supports a group from a more preferred tuple, but did not predict any corresponding keyshares, the server will ask the client to retry the ClientHello (by issuing a Hello Retry Request or HRR) with the most preferred mutually supported group.  The above works as expected when the server's configuration uses the built-in default group list, or explicitly defines its own list by directly defining the various desired groups and group 'tuples'.  No OpenSSL FIPS modules are affected by this issue, the code in question lies outside the FIPS boundary.  OpenSSL 3.6 and 3.5 are vulnerable to this issue.  OpenSSL 3.6 users should upgrade to OpenSSL 3.6.2 once it is released. OpenSSL 3.5 users should upgrade to OpenSSL 3.5.6 once it is released.  OpenSSL 3.4, 3.3, 3.0, 1.0.2 and 1.1.1 are not affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-2673",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-2673",
-      "severity": "high",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An OpenSSL TLS 1.3 server may fail to negotiate the expected preferred key exchange group when its key exchange group configuration includes the default by using the 'DEFAULT' keyword.  Impact summary: A less preferred key exchange may be used even when a more preferred group is supported by both client and server, if the group was not included among the client's initial predicated keyshares. This will sometimes be the case with the new hybrid post-quantum groups, if the client chooses to defer their use until specifically requested by the server.  If an OpenSSL TLS 1.3 server's configuration uses the 'DEFAULT' keyword to interpolate the built-in default group list into its own configuration, perhaps adding or removing specific elements, then an implementation defect causes the 'DEFAULT' list to lose its 'tuple' structure, and all server-supported groups were treated as a single sufficiently secure 'tuple', with the server not sending a Hello Retry Request (HRR) even when a group in a more preferred tuple was mutually supported.  As a result, the client and server might fail to negotiate a mutually supported post-quantum key agreement group, such as 'X25519MLKEM768', if the client's configuration results in only 'classical' groups (such as 'X25519' being the only ones in the client's initial keyshare prediction).  OpenSSL 3.5 and later support a new syntax for selecting the most preferred TLS 1.3 key agreement group on TLS servers.  The old syntax had a single 'flat' list of groups, and treated all the supported groups as sufficiently secure. If any of the keyshares predicted by the client were supported by the server the most preferred among these was selected, even if other groups supported by the client, but not included in the list of predicted keyshares would have been more preferred, if included.  The new syntax partitions the groups into distinct 'tuples' of roughly equivalent security.  Within each tuple the most preferred group included among the client's predicted keyshares is chosen, but if the client supports a group from a more preferred tuple, but did not predict any corresponding keyshares, the server will ask the client to retry the ClientHello (by issuing a Hello Retry Request or HRR) with the most preferred mutually supported group.  The above works as expected when the server's configuration uses the built-in default group list, or explicitly defines its own list by directly defining the various desired groups and group 'tuples'.  No OpenSSL FIPS modules are affected by this issue, the code in question lies outside the FIPS boundary.  OpenSSL 3.6 and 3.5 are vulnerable to this issue.  OpenSSL 3.6 users should upgrade to OpenSSL 3.6.2 once it is released. OpenSSL 3.5 users should upgrade to OpenSSL 3.5.6 once it is released.  OpenSSL 3.4, 3.3, 3.0, 1.0.2 and 1.1.1 are not affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-2673",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-2673",
-      "severity": "high",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An OpenSSL TLS 1.3 server may fail to negotiate the expected preferred key exchange group when its key exchange group configuration includes the default by using the 'DEFAULT' keyword.  Impact summary: A less preferred key exchange may be used even when a more preferred group is supported by both client and server, if the group was not included among the client's initial predicated keyshares. This will sometimes be the case with the new hybrid post-quantum groups, if the client chooses to defer their use until specifically requested by the server.  If an OpenSSL TLS 1.3 server's configuration uses the 'DEFAULT' keyword to interpolate the built-in default group list into its own configuration, perhaps adding or removing specific elements, then an implementation defect causes the 'DEFAULT' list to lose its 'tuple' structure, and all server-supported groups were treated as a single sufficiently secure 'tuple', with the server not sending a Hello Retry Request (HRR) even when a group in a more preferred tuple was mutually supported.  As a result, the client and server might fail to negotiate a mutually supported post-quantum key agreement group, such as 'X25519MLKEM768', if the client's configuration results in only 'classical' groups (such as 'X25519' being the only ones in the client's initial keyshare prediction).  OpenSSL 3.5 and later support a new syntax for selecting the most preferred TLS 1.3 key agreement group on TLS servers.  The old syntax had a single 'flat' list of groups, and treated all the supported groups as sufficiently secure. If any of the keyshares predicted by the client were supported by the server the most preferred among these was selected, even if other groups supported by the client, but not included in the list of predicted keyshares would have been more preferred, if included.  The new syntax partitions the groups into distinct 'tuples' of roughly equivalent security.  Within each tuple the most preferred group included among the client's predicted keyshares is chosen, but if the client supports a group from a more preferred tuple, but did not predict any corresponding keyshares, the server will ask the client to retry the ClientHello (by issuing a Hello Retry Request or HRR) with the most preferred mutually supported group.  The above works as expected when the server's configuration uses the built-in default group list, or explicitly defines its own list by directly defining the various desired groups and group 'tuples'.  No OpenSSL FIPS modules are affected by this issue, the code in question lies outside the FIPS boundary.  OpenSSL 3.6 and 3.5 are vulnerable to this issue.  OpenSSL 3.6 users should upgrade to OpenSSL 3.6.2 once it is released. OpenSSL 3.5 users should upgrade to OpenSSL 3.5.6 once it is released.  OpenSSL 3.4, 3.3, 3.0, 1.0.2 and 1.1.1 are not affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-2673",
       "scanner": "grype"
     },
     {
@@ -316,26 +266,6 @@
       "scanner": "grype"
     },
     {
-      "id": "CVE-2025-12084",
-      "severity": "medium",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.11",
-      "description": "When building nested elements using xml.dom.minidom methods such as appendChild() that have a dependency on _clear_id_cache() the algorithm is quadratic. Availability can be impacted when building excessively nested documents.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-12084",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-4519",
-      "severity": "high",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "The webbrowser.open() API would accept leading dashes in the URL which \ncould be handled as command line options for certain web browsers. New \nbehavior rejects leading dashes. Users are recommended to sanitize URLs \nprior to passing to webbrowser.open().",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2026-4519",
-      "scanner": "grype"
-    },
-    {
       "id": "CVE-2010-4756",
       "severity": "negligible",
       "package": "libc-bin",
@@ -351,16 +281,6 @@
       "version": "2.41-12+deb13u2",
       "description": "The glob implementation in the GNU C Library (aka glibc or libc6) allows remote authenticated users to cause a denial of service (CPU and memory consumption) via crafted glob expressions that do not match any pathnames, as demonstrated by glob expressions in STAT commands to an FTP daemon, a different vulnerability than CVE-2010-2632.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2010-4756",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-4224",
-      "severity": "medium",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "When an Expat parser with a registered ElementDeclHandler parses an inline\ndocument type definition containing a deeply nested content model a C stack\noverflow occurs.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2026-4224",
       "scanner": "grype"
     },
     {
@@ -400,46 +320,6 @@
       "scanner": "grype"
     },
     {
-      "id": "CVE-2025-13837",
-      "severity": "medium",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.10",
-      "description": "When loading a plist file, the plistlib module reads data in size specified by the file itself, meaning a malicious file can cause OOM and DoS issues",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-13837",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31790",
-      "severity": "high",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Applications using RSASVE key encapsulation to establish a secret encryption key can send contents of an uninitialized memory buffer to a malicious peer.  Impact summary: The uninitialized buffer might contain sensitive data from the previous execution of the application process which leads to sensitive data leakage to an attacker.  RSA_public_encrypt() returns the number of bytes written on success and -1 on error. The affected code tests only whether the return value is non-zero. As a result, if RSA encryption fails, encapsulation can still return success to the caller, set the output lengths, and leave the caller to use the contents of the ciphertext buffer as if a valid KEM ciphertext had been produced.  If applications use EVP_PKEY_encapsulate() with RSA/RSASVE on an attacker-supplied invalid RSA public key without first validating that key, then this may cause stale or uninitialized contents of the caller-provided ciphertext buffer to be disclosed to the attacker in place of the KEM ciphertext.  As a workaround calling EVP_PKEY_public_check() or EVP_PKEY_public_check_quick() before EVP_PKEY_encapsulate() will mitigate the issue.  The FIPS modules in 3.6, 3.5, 3.4, 3.3, 3.1 and 3.0 are affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31790",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31790",
-      "severity": "high",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Applications using RSASVE key encapsulation to establish a secret encryption key can send contents of an uninitialized memory buffer to a malicious peer.  Impact summary: The uninitialized buffer might contain sensitive data from the previous execution of the application process which leads to sensitive data leakage to an attacker.  RSA_public_encrypt() returns the number of bytes written on success and -1 on error. The affected code tests only whether the return value is non-zero. As a result, if RSA encryption fails, encapsulation can still return success to the caller, set the output lengths, and leave the caller to use the contents of the ciphertext buffer as if a valid KEM ciphertext had been produced.  If applications use EVP_PKEY_encapsulate() with RSA/RSASVE on an attacker-supplied invalid RSA public key without first validating that key, then this may cause stale or uninitialized contents of the caller-provided ciphertext buffer to be disclosed to the attacker in place of the KEM ciphertext.  As a workaround calling EVP_PKEY_public_check() or EVP_PKEY_public_check_quick() before EVP_PKEY_encapsulate() will mitigate the issue.  The FIPS modules in 3.6, 3.5, 3.4, 3.3, 3.1 and 3.0 are affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31790",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31790",
-      "severity": "high",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Applications using RSASVE key encapsulation to establish a secret encryption key can send contents of an uninitialized memory buffer to a malicious peer.  Impact summary: The uninitialized buffer might contain sensitive data from the previous execution of the application process which leads to sensitive data leakage to an attacker.  RSA_public_encrypt() returns the number of bytes written on success and -1 on error. The affected code tests only whether the return value is non-zero. As a result, if RSA encryption fails, encapsulation can still return success to the caller, set the output lengths, and leave the caller to use the contents of the ciphertext buffer as if a valid KEM ciphertext had been produced.  If applications use EVP_PKEY_encapsulate() with RSA/RSASVE on an attacker-supplied invalid RSA public key without first validating that key, then this may cause stale or uninitialized contents of the caller-provided ciphertext buffer to be disclosed to the attacker in place of the KEM ciphertext.  As a workaround calling EVP_PKEY_public_check() or EVP_PKEY_public_check_quick() before EVP_PKEY_encapsulate() will mitigate the issue.  The FIPS modules in 3.6, 3.5, 3.4, 3.3, 3.1 and 3.0 are affected by this issue.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31790",
-      "scanner": "grype"
-    },
-    {
       "id": "CVE-2019-1010023",
       "severity": "negligible",
       "package": "libc-bin",
@@ -455,66 +335,6 @@
       "version": "2.41-12+deb13u2",
       "description": "GNU Libc current is affected by: Re-mapping current loaded library with malicious ELF file. The impact is: In worst case attacker may evaluate privileges. The component is: libld. The attack vector is: Attacker sends 2 ELF files to victim and asks to run ldd on it. ldd execute code. NOTE: Upstream comments indicate \"this is being treated as a non-security bug and no real threat.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2019-1010023",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28389",
-      "severity": "unknown",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyAgreeRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyAgreeRecipientInfo is processed, the optional parameters field of KeyEncryptionAlgorithmIdentifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28389",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28390",
-      "severity": "unknown",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyTransportRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyTransportRecipientInfo with RSA-OAEP encryption is processed, the optional parameters field of RSA-OAEP SourceFunc algorithm identifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28390",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28389",
-      "severity": "unknown",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyAgreeRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyAgreeRecipientInfo is processed, the optional parameters field of KeyEncryptionAlgorithmIdentifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28389",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28390",
-      "severity": "unknown",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyTransportRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyTransportRecipientInfo with RSA-OAEP encryption is processed, the optional parameters field of RSA-OAEP SourceFunc algorithm identifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28390",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28389",
-      "severity": "unknown",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyAgreeRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyAgreeRecipientInfo is processed, the optional parameters field of KeyEncryptionAlgorithmIdentifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28389",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28390",
-      "severity": "unknown",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: During processing of a crafted CMS EnvelopedData message with KeyTransportRecipientInfo a NULL pointer dereference can happen.  Impact summary: Applications that process attacker-controlled CMS data may crash before authentication or cryptographic operations occur resulting in Denial of Service.  When a CMS EnvelopedData message that uses KeyTransportRecipientInfo with RSA-OAEP encryption is processed, the optional parameters field of RSA-OAEP SourceFunc algorithm identifier is examined without checking for its presence. This results in a NULL pointer dereference if the field is missing.  Applications and services that call CMS_decrypt() on untrusted input (e.g., S/MIME processing or CMS-based protocols) are vulnerable.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28390",
       "scanner": "grype"
     },
     {
@@ -617,46 +437,6 @@
       "scanner": "grype"
     },
     {
-      "id": "GHSA-4xh5-x5gv-qwph",
-      "severity": "medium",
-      "package": "pip",
-      "version": "25.0.1",
-      "fixedVersion": "25.3",
-      "description": "pip's fallback tar extraction doesn't check symbolic links point to extraction directory",
-      "link": "https://github.com/advisories/GHSA-4xh5-x5gv-qwph",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28387",
-      "severity": "unknown",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An uncommon configuration of clients performing DANE TLSA-based server authentication, when paired with uncommon server DANE TLSA records, may result in a use-after-free and/or double-free on the client side.  Impact summary: A use after free can have a range of potential consequences such as the corruption of valid data, crashes or execution of arbitrary code.  However, the issue only affects clients that make use of TLSA records with both the PKIX-TA(0/PKIX-EE(1) certificate usages and the DANE-TA(2) certificate usage.  By far the most common deployment of DANE is in SMTP MTAs for which RFC7672 recommends that clients treat as 'unusable' any TLSA records that have the PKIX certificate usages.  These SMTP (or other similar) clients are not vulnerable to this issue.  Conversely, any clients that support only the PKIX usages, and ignore the DANE-TA(2) usage are also not vulnerable.  The client would also need to be communicating with a server that publishes a TLSA RRset with both types of TLSA records.  No FIPS modules are affected by this issue, the problem code is outside the FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28387",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28387",
-      "severity": "unknown",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An uncommon configuration of clients performing DANE TLSA-based server authentication, when paired with uncommon server DANE TLSA records, may result in a use-after-free and/or double-free on the client side.  Impact summary: A use after free can have a range of potential consequences such as the corruption of valid data, crashes or execution of arbitrary code.  However, the issue only affects clients that make use of TLSA records with both the PKIX-TA(0/PKIX-EE(1) certificate usages and the DANE-TA(2) certificate usage.  By far the most common deployment of DANE is in SMTP MTAs for which RFC7672 recommends that clients treat as 'unusable' any TLSA records that have the PKIX certificate usages.  These SMTP (or other similar) clients are not vulnerable to this issue.  Conversely, any clients that support only the PKIX usages, and ignore the DANE-TA(2) usage are also not vulnerable.  The client would also need to be communicating with a server that publishes a TLSA RRset with both types of TLSA records.  No FIPS modules are affected by this issue, the problem code is outside the FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28387",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28387",
-      "severity": "unknown",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: An uncommon configuration of clients performing DANE TLSA-based server authentication, when paired with uncommon server DANE TLSA records, may result in a use-after-free and/or double-free on the client side.  Impact summary: A use after free can have a range of potential consequences such as the corruption of valid data, crashes or execution of arbitrary code.  However, the issue only affects clients that make use of TLSA records with both the PKIX-TA(0/PKIX-EE(1) certificate usages and the DANE-TA(2) certificate usage.  By far the most common deployment of DANE is in SMTP MTAs for which RFC7672 recommends that clients treat as 'unusable' any TLSA records that have the PKIX certificate usages.  These SMTP (or other similar) clients are not vulnerable to this issue.  Conversely, any clients that support only the PKIX usages, and ignore the DANE-TA(2) usage are also not vulnerable.  The client would also need to be communicating with a server that publishes a TLSA RRset with both types of TLSA records.  No FIPS modules are affected by this issue, the problem code is outside the FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28387",
-      "scanner": "grype"
-    },
-    {
       "id": "CVE-2007-5686",
       "severity": "negligible",
       "package": "login.defs",
@@ -678,19 +458,9 @@
       "id": "CVE-2025-12781",
       "severity": "medium",
       "package": "python",
-      "version": "3.12.13",
+      "version": "3.13.13",
       "description": "When passing data to the b64decode(), standard_b64decode(), and urlsafe_b64decode() functions in the \"base64\" module the characters \"+/\" will always be accepted, regardless of the value of \"altchars\" parameter, typically used to establish an \"alternative base64 alphabet\" such as the URL safe alphabet. This behavior matches what is recommended in earlier base64 RFCs, but newer RFCs now recommend either dropping characters outside the specified base64 alphabet or raising an error. The old behavior has the possibility of causing data integrity issues.\n\n\n\n\nThis behavior can only be insecure if your application uses an alternate base64 alphabet (without \"+/\"). If your application does not use the \"altchars\" parameter or the urlsafe_b64decode() function, then your application does not use an alternative base64 alphabet.\n\n\n\n\nThe attached patches DOES NOT make the base64-decode behavior raise an error, as this would be a change in behavior and break existing programs. Instead, the patch deprecates the behavior which will be replaced with the newly recommended behavior in a future version of Python. Users are recommended to mitigate by verifying user-controlled inputs match the base64 \nalphabet they are expecting or verify that their application would not be \naffected if the b64decode() functions accepted \"+\" or \"/\" outside of altchars.",
       "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-12781",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-2297",
-      "severity": "medium",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "The import hook in CPython that handles legacy *.pyc files (SourcelessFileLoader) is incorrectly handled in FileLoader (a base class) and so does not use io.open_code() to read the .pyc files. sys.audit handlers for this audit event therefore do not fire.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2026-2297",
       "scanner": "grype"
     },
     {
@@ -883,92 +653,12 @@
       "scanner": "grype"
     },
     {
-      "id": "GHSA-6vgw-5pg2-w6jp",
-      "severity": "low",
-      "package": "pip",
-      "version": "25.0.1",
-      "fixedVersion": "26.0",
-      "description": "pip Path Traversal vulnerability",
-      "link": "https://github.com/advisories/GHSA-6vgw-5pg2-w6jp",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28388",
-      "severity": "unknown",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: When a delta CRL that contains a Delta CRL Indicator extension is processed a NULL pointer dereference might happen if the required CRL Number extension is missing.  Impact summary: A NULL pointer dereference can trigger a crash which leads to a Denial of Service for an application.  When CRL processing and delta CRL processing is enabled during X.509 certificate verification, the delta CRL processing does not check whether the CRL Number extension is NULL before dereferencing it. When a malformed delta CRL file is being processed, this parameter can be NULL, causing a NULL pointer dereference.  Exploiting this issue requires the X509_V_FLAG_USE_DELTAS flag to be enabled in the verification context, the certificate being verified to contain a freshestCRL extension or the base CRL to have the EXFLAG_FRESHEST flag set, and an attacker to provide a malformed CRL to an application that processes it.  The vulnerability is limited to Denial of Service and cannot be escalated to achieve code execution or memory disclosure. For that reason the issue was assessed as Low severity according to our Security Policy.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28388",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28388",
-      "severity": "unknown",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: When a delta CRL that contains a Delta CRL Indicator extension is processed a NULL pointer dereference might happen if the required CRL Number extension is missing.  Impact summary: A NULL pointer dereference can trigger a crash which leads to a Denial of Service for an application.  When CRL processing and delta CRL processing is enabled during X.509 certificate verification, the delta CRL processing does not check whether the CRL Number extension is NULL before dereferencing it. When a malformed delta CRL file is being processed, this parameter can be NULL, causing a NULL pointer dereference.  Exploiting this issue requires the X509_V_FLAG_USE_DELTAS flag to be enabled in the verification context, the certificate being verified to contain a freshestCRL extension or the base CRL to have the EXFLAG_FRESHEST flag set, and an attacker to provide a malformed CRL to an application that processes it.  The vulnerability is limited to Denial of Service and cannot be escalated to achieve code execution or memory disclosure. For that reason the issue was assessed as Low severity according to our Security Policy.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28388",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-28388",
-      "severity": "unknown",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: When a delta CRL that contains a Delta CRL Indicator extension is processed a NULL pointer dereference might happen if the required CRL Number extension is missing.  Impact summary: A NULL pointer dereference can trigger a crash which leads to a Denial of Service for an application.  When CRL processing and delta CRL processing is enabled during X.509 certificate verification, the delta CRL processing does not check whether the CRL Number extension is NULL before dereferencing it. When a malformed delta CRL file is being processed, this parameter can be NULL, causing a NULL pointer dereference.  Exploiting this issue requires the X509_V_FLAG_USE_DELTAS flag to be enabled in the verification context, the certificate being verified to contain a freshestCRL extension or the base CRL to have the EXFLAG_FRESHEST flag set, and an attacker to provide a malformed CRL to an application that processes it.  The vulnerability is limited to Denial of Service and cannot be escalated to achieve code execution or memory disclosure. For that reason the issue was assessed as Low severity according to our Security Policy.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-28388",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31789",
-      "severity": "unknown",
-      "package": "libssl3t64",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Converting an excessively large OCTET STRING value to a hexadecimal string leads to a heap buffer overflow on 32 bit platforms.  Impact summary: A heap buffer overflow may lead to a crash or possibly an attacker controlled code execution or other undefined behavior.  If an attacker can supply a crafted X.509 certificate with an excessively large OCTET STRING value in extensions such as the Subject Key Identifier (SKID) or Authority Key Identifier (AKID) which are being converted to hex, the size of the buffer needed for the result is calculated as multiplication of the input length by 3. On 32 bit platforms, this multiplication may overflow resulting in the allocation of a smaller buffer and a heap buffer overflow.  Applications and services that print or log contents of untrusted X.509 certificates are vulnerable to this issue. As the certificates would have to have sizes of over 1 Gigabyte, printing or logging such certificates is a fairly unlikely operation and only 32 bit platforms are affected, this issue was assigned Low severity.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31789",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31789",
-      "severity": "unknown",
-      "package": "openssl",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Converting an excessively large OCTET STRING value to a hexadecimal string leads to a heap buffer overflow on 32 bit platforms.  Impact summary: A heap buffer overflow may lead to a crash or possibly an attacker controlled code execution or other undefined behavior.  If an attacker can supply a crafted X.509 certificate with an excessively large OCTET STRING value in extensions such as the Subject Key Identifier (SKID) or Authority Key Identifier (AKID) which are being converted to hex, the size of the buffer needed for the result is calculated as multiplication of the input length by 3. On 32 bit platforms, this multiplication may overflow resulting in the allocation of a smaller buffer and a heap buffer overflow.  Applications and services that print or log contents of untrusted X.509 certificates are vulnerable to this issue. As the certificates would have to have sizes of over 1 Gigabyte, printing or logging such certificates is a fairly unlikely operation and only 32 bit platforms are affected, this issue was assigned Low severity.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31789",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-31789",
-      "severity": "unknown",
-      "package": "openssl-provider-legacy",
-      "version": "3.5.5-1~deb13u1",
-      "fixedVersion": "3.5.5-1~deb13u2",
-      "description": "Issue summary: Converting an excessively large OCTET STRING value to a hexadecimal string leads to a heap buffer overflow on 32 bit platforms.  Impact summary: A heap buffer overflow may lead to a crash or possibly an attacker controlled code execution or other undefined behavior.  If an attacker can supply a crafted X.509 certificate with an excessively large OCTET STRING value in extensions such as the Subject Key Identifier (SKID) or Authority Key Identifier (AKID) which are being converted to hex, the size of the buffer needed for the result is calculated as multiplication of the input length by 3. On 32 bit platforms, this multiplication may overflow resulting in the allocation of a smaller buffer and a heap buffer overflow.  Applications and services that print or log contents of untrusted X.509 certificates are vulnerable to this issue. As the certificates would have to have sizes of over 1 Gigabyte, printing or logging such certificates is a fairly unlikely operation and only 32 bit platforms are affected, this issue was assigned Low severity.  The FIPS modules in 3.6, 3.5, 3.4, 3.3 and 3.0 are not affected by this issue, as the affected code is outside the OpenSSL FIPS module boundary.",
-      "link": "https://security-tracker.debian.org/tracker/CVE-2026-31789",
-      "scanner": "grype"
-    },
-    {
       "id": "CVE-2026-27171",
       "severity": "medium",
       "package": "zlib1g",
       "version": "1:1.3.dfsg+really1.3.1-1+b1",
       "description": "zlib before 1.3.2 allows CPU consumption via crc32_combine64 and crc32_combine_gen64 because x2nmodp can do right shifts within a loop that has no termination condition.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2026-27171",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2025-13462",
-      "severity": "low",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "The \"tarfile\" module would still apply normalization of AREGTYPE (\\x00) blocks to DIRTYPE, even while processing a multi-block member such as GNUTYPE_LONGNAME or GNUTYPE_LONGLINK. This could result in a crafted tar archive being misinterpreted by the tarfile module compared to other implementations.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2025-13462",
       "scanner": "grype"
     },
     {
@@ -1086,16 +776,6 @@
       "version": "2.41-5",
       "description": "A flaw was found in the util-linux chfn and chsh utilities when compiled with Readline support. The Readline library uses an \"INPUTRC\" environment variable to get a path to the library config file. When the library cannot parse the specified file, it prints an error message containing data from the file. This flaw allows an unprivileged user to read root-owned files, potentially leading to privilege escalation. This flaw affects util-linux versions prior to 2.37.4.",
       "link": "https://security-tracker.debian.org/tracker/CVE-2022-0563",
-      "scanner": "grype"
-    },
-    {
-      "id": "CVE-2026-3479",
-      "severity": "negligible",
-      "package": "python",
-      "version": "3.12.13",
-      "fixedVersion": "3.13.13",
-      "description": "DISPUTED: The project has clarified that the documentation was incorrect, and that pkgutil.get_data() has the same security model as open(). The documentation has been updated to clarify this point. There is no vulnerability in the function if following the intended security model.\n\npkgutil.get_data() did not validate the resource argument as documented, allowing path traversals.",
-      "link": "https://nvd.nist.gov/vuln/detail/CVE-2026-3479",
       "scanner": "grype"
     },
     {

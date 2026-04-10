@@ -1,0 +1,65 @@
+# providers.example.yml
+#
+# Sample multi-provider configuration file for the OIDC Diagnostic Tool.
+# Copy to providers.yml and mount into the container:
+#
+#   volumes:
+#     - ./providers.yml:/app/providers.yml:ro
+#
+# When providers.yml is present, it replaces the single-provider env var config.
+# Each provider gets its own login button on the landing page.
+#
+# NOTE: Multi-provider support is planned for a future release.
+#       This file documents the intended format for reference.
+
+providers:
+
+  # ── Keycloak ────────────────────────────────────────────────────────────────
+  - name: Keycloak Dev
+    id: keycloak-dev                          # URL-safe identifier used in /login/<id>
+    discovery_url: http://keycloak:8080/realms/dev/.well-known/openid-configuration
+    client_id: oidc-diagnostic
+    client_secret: your-client-secret
+    scope: openid email profile roles
+    pkce_method: S256
+    token_signing_alg: RS256                  # Keycloak default; ES256 available if configured
+
+  # ── Kanidm ──────────────────────────────────────────────────────────────────
+  - name: Kanidm
+    id: kanidm
+    discovery_url: https://kanidm.example.com/oauth2/openid/ssotest/.well-known/openid-configuration
+    client_id: ssotest
+    client_secret: your-client-secret
+    scope: openid email profile
+    pkce_method: S256                         # Required — Kanidm enforces PKCE
+    token_signing_alg: ES256                  # Kanidm default
+
+  # ── Authentik ───────────────────────────────────────────────────────────────
+  - name: Authentik
+    id: authentik
+    discovery_url: https://authentik.example.com/application/o/my-app/.well-known/openid-configuration
+    client_id: your-client-id
+    client_secret: your-client-secret
+    scope: openid email profile
+    pkce_method: S256
+    token_signing_alg: RS256
+
+  # ── Microsoft Entra ID (Azure AD) ───────────────────────────────────────────
+  - name: Entra ID
+    id: entra
+    discovery_url: https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration
+    client_id: your-application-client-id
+    client_secret: your-client-secret-value
+    scope: openid email profile
+    pkce_method: S256
+    token_signing_alg: RS256
+
+  # ── Okta ────────────────────────────────────────────────────────────────────
+  - name: Okta
+    id: okta
+    discovery_url: https://your-domain.okta.com/oauth2/default/.well-known/openid-configuration
+    client_id: your-client-id
+    client_secret: your-client-secret
+    scope: openid email profile groups
+    pkce_method: S256
+    token_signing_alg: RS256
