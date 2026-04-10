@@ -8,10 +8,18 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from flask import (Flask, flash, jsonify, redirect, render_template,
                    request, session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
 
 app = Flask(__name__)
+# Trust X-Forwarded-Proto and X-Forwarded-Host from a single reverse proxy (e.g. Traefik).
+# This ensures url_for(..., _external=True) generates https:// URLs when TLS is terminated upstream.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# Fallback: if the proxy doesn't forward X-Forwarded-Proto, set PREFERRED_URL_SCHEME=https
+if os.environ.get('PREFERRED_URL_SCHEME'):
+    app.config['PREFERRED_URL_SCHEME'] = os.environ['PREFERRED_URL_SCHEME']
 
 _secret = os.environ.get('SECRET_KEY')
 if not _secret:
