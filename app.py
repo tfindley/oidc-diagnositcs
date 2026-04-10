@@ -3,6 +3,7 @@ import json
 import os
 import secrets
 import time
+import yaml
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -29,20 +30,49 @@ if not _secret:
     print("WARNING: SECRET_KEY not set — sessions will be lost on restart. Set it in .env")
 app.secret_key = _secret
 
-# ── OIDC config ───────────────────────────────────────────────────────────────
-OIDC_DISCOVERY_URL  = os.environ.get('OIDC_DISCOVERY_URL', '')
-OIDC_CLIENT_ID      = os.environ.get('OIDC_CLIENT_ID', '')
-OIDC_CLIENT_SECRET  = os.environ.get('OIDC_CLIENT_SECRET', '')
-OIDC_SCOPE          = os.environ.get('OIDC_SCOPE', 'openid email profile')
-OIDC_PKCE_METHOD    = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
+# ── OIDC config (single-provider env var fallback) ────────────────────────────
+OIDC_DISCOVERY_URL     = os.environ.get('OIDC_DISCOVERY_URL', '')
+OIDC_CLIENT_ID         = os.environ.get('OIDC_CLIENT_ID', '')
+OIDC_CLIENT_SECRET     = os.environ.get('OIDC_CLIENT_SECRET', '')
+OIDC_SCOPE             = os.environ.get('OIDC_SCOPE', 'openid email profile')
+OIDC_PKCE_METHOD       = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
 OIDC_TOKEN_SIGNING_ALG = os.environ.get('OIDC_TOKEN_SIGNING_ALG', '').strip()
 
 # ── UI config ─────────────────────────────────────────────────────────────────
-# SHOW_CONFIG=true reveals the full config card on the landing page.
-# Defaults to false (hidden) — recommended for shared/internal deployments.
 SHOW_CONFIG = os.environ.get('SHOW_CONFIG', 'false').lower() == 'true'
-GITHUB_URL  = os.environ.get('GITHUB_URL', 'https://github.com/tfindley/sso_oidc_client_tool')
-KOFI_URL    = os.environ.get('KOFI_URL', '')
+GITHUB_URL  = 'https://github.com/tfindley/oidc-diagnositcs'
+KOFI_URL    = 'https://ko-fi.com/tfindley'
+
+# ── Multi-provider configuration ──────────────────────────────────────────────
+# If providers.yml is present it overrides the single-provider env var config.
+# Each entry must have: name, id, discovery_url, client_id, client_secret.
+# Optional per-provider: scope, pkce_method, token_signing_alg.
+MULTI_PROVIDER: bool = False
+PROVIDERS: list = []
+
+_providers_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'providers.yml')
+if os.path.exists(_providers_file):
+    try:
+        with open(_providers_file) as _f:
+            _yml = yaml.safe_load(_f)
+        if _yml and _yml.get('providers'):
+            PROVIDERS = _yml['providers']
+            MULTI_PROVIDER = True
+            print(f"Loaded {len(PROVIDERS)} provider(s) from providers.yml")
+    except Exception as _exc:
+        print(f"WARNING: Failed to load providers.yml: {_exc}")
+
+if not MULTI_PROVIDER and OIDC_DISCOVERY_URL and OIDC_CLIENT_ID:
+    PROVIDERS = [{
+        'name':              'Sign in via SSO',
+        'id':                'oidc',
+        'discovery_url':     OIDC_DISCOVERY_URL,
+        'client_id':         OIDC_CLIENT_ID,
+        'client_secret':     OIDC_CLIENT_SECRET,
+        'scope':             OIDC_SCOPE,
+        'pkce_method':       OIDC_PKCE_METHOD,
+        'token_signing_alg': OIDC_TOKEN_SIGNING_ALG,
+    }]
 
 # ── Claims metadata ───────────────────────────────────────────────────────────
 TIMESTAMP_CLAIMS = frozenset({'exp', 'iat', 'nbf', 'auth_time', 'updated_at'})
@@ -105,16 +135,17 @@ CLAIM_DESCRIPTIONS = {
 
 # ── OAuth registration ────────────────────────────────────────────────────────
 oauth = OAuth(app)
-if OIDC_DISCOVERY_URL and OIDC_CLIENT_ID:
-    _client_kwargs = {'scope': OIDC_SCOPE}
-    if OIDC_PKCE_METHOD != 'disabled':
-        _client_kwargs['code_challenge_method'] = OIDC_PKCE_METHOD
+for _p in PROVIDERS:
+    _pkce = _p.get('pkce_method', 'S256').strip()
+    _kw   = {'scope': _p.get('scope', 'openid email profile')}
+    if _pkce != 'disabled':
+        _kw['code_challenge_method'] = _pkce
     oauth.register(
-        name='oidc',
-        server_metadata_url=OIDC_DISCOVERY_URL,
-        client_id=OIDC_CLIENT_ID,
-        client_secret=OIDC_CLIENT_SECRET,
-        client_kwargs=_client_kwargs,
+        name=_p['id'],
+        server_metadata_url=_p['discovery_url'],
+        client_id=_p['client_id'],
+        client_secret=_p['client_secret'],
+        client_kwargs=_kw,
     )
 
 
@@ -124,7 +155,7 @@ def inject_globals():
     """Make site-wide config available in all templates without explicit passing."""
     return {
         'github_url': GITHUB_URL,
-        'kofi_url': KOFI_URL,
+        'kofi_url':   KOFI_URL,
         'show_config': SHOW_CONFIG,
     }
 
@@ -223,39 +254,73 @@ def build_compare_table(id_payload: dict, access_payload: dict, userinfo: dict) 
 
 @app.route('/')
 def index():
+    # In multi-provider mode, use the first provider's discovery URL for the
+    # connectivity and discovery panels; config card is hidden (single-provider only).
+    first = PROVIDERS[0] if PROVIDERS else {}
     return render_template('index.html',
         user=session.get('user'),
+        providers=PROVIDERS,
+        multi_provider=MULTI_PROVIDER,
         config={
-            'discovery_url': OIDC_DISCOVERY_URL,
-            'client_id': OIDC_CLIENT_ID,
-            'scope': OIDC_SCOPE,
-            'pkce_method': OIDC_PKCE_METHOD,
-            'token_signing_alg': OIDC_TOKEN_SIGNING_ALG or 'auto (from server)',
-            'configured': bool(OIDC_DISCOVERY_URL and OIDC_CLIENT_ID),
+            'discovery_url':    first.get('discovery_url', OIDC_DISCOVERY_URL),
+            'client_id':        first.get('client_id', OIDC_CLIENT_ID),
+            'scope':            first.get('scope', OIDC_SCOPE),
+            'pkce_method':      first.get('pkce_method', OIDC_PKCE_METHOD),
+            'token_signing_alg': (first.get('token_signing_alg') or OIDC_TOKEN_SIGNING_ALG or 'auto (from server)'),
+            'configured':       bool(PROVIDERS),
         },
     )
 
 
 @app.route('/login')
 def login():
-    if not (OIDC_DISCOVERY_URL and OIDC_CLIENT_ID):
+    """Single-provider mode: initiate OIDC login."""
+    if not PROVIDERS:
         flash('OIDC provider not configured — set OIDC_DISCOVERY_URL and OIDC_CLIENT_ID in .env', 'error')
+        return redirect(url_for('index'))
+    if MULTI_PROVIDER:
+        # Multi-provider mode: the index page shows per-provider buttons; /login is unused.
         return redirect(url_for('index'))
     try:
         session['login_start'] = time.time()
-        return oauth.oidc.authorize_redirect(url_for('auth_callback', _external=True))
+        session['provider_id'] = PROVIDERS[0]['id']
+        return oauth.create_client(PROVIDERS[0]['id']).authorize_redirect(
+            url_for('auth_callback', _external=True)
+        )
     except Exception as exc:
         flash(f'Could not reach the OIDC provider: {exc}', 'error')
         return redirect(url_for('index'))
 
 
-@app.route('/callback')
-def auth_callback():
+@app.route('/login/<provider_id>')
+def login_provider(provider_id):
+    """Multi-provider mode: initiate OIDC login for a specific provider."""
+    provider = next((p for p in PROVIDERS if p['id'] == provider_id), None)
+    if not provider:
+        flash(f'Unknown provider: {provider_id}', 'error')
+        return redirect(url_for('index'))
     try:
-        claims_options = {}
-        if OIDC_TOKEN_SIGNING_ALG:
-            claims_options['alg'] = {'values': [OIDC_TOKEN_SIGNING_ALG]}
-        token = oauth.oidc.authorize_access_token(
+        session['login_start'] = time.time()
+        session['provider_id'] = provider_id
+        return oauth.create_client(provider_id).authorize_redirect(
+            url_for('auth_callback_provider', provider_id=provider_id, _external=True)
+        )
+    except Exception as exc:
+        flash(f'Could not reach provider "{provider["name"]}": {exc}', 'error')
+        return redirect(url_for('index'))
+
+
+def _handle_callback(provider_id: str):
+    """Shared login callback logic for both single- and multi-provider routes."""
+    provider = next((p for p in PROVIDERS if p['id'] == provider_id), None)
+    if not provider:
+        flash(f'Unknown provider: {provider_id}', 'error')
+        return redirect(url_for('index'))
+
+    alg = provider.get('token_signing_alg', '').strip()
+    claims_options = {'alg': {'values': [alg]}} if alg else {}
+    try:
+        token = oauth.create_client(provider_id).authorize_access_token(
             **({"claims_options": claims_options} if claims_options else {})
         )
     except Exception as exc:
@@ -266,6 +331,7 @@ def auth_callback():
     if 'login_start' in session:
         login_duration = round(time.time() - session.pop('login_start'), 2)
 
+    session['provider_id'] = provider_id
     session['raw_tokens'] = {
         'access_token':  token.get('access_token'),
         'id_token':      token.get('id_token'),
@@ -283,6 +349,19 @@ def auth_callback():
         or userinfo.get('sub', 'authenticated')
     )
     return redirect(url_for('claims'))
+
+
+@app.route('/callback')
+def auth_callback():
+    """Single-provider callback."""
+    provider_id = session.get('provider_id', PROVIDERS[0]['id'] if PROVIDERS else 'oidc')
+    return _handle_callback(provider_id)
+
+
+@app.route('/callback/<provider_id>')
+def auth_callback_provider(provider_id):
+    """Multi-provider callback."""
+    return _handle_callback(provider_id)
 
 
 @app.route('/claims')
@@ -306,7 +385,7 @@ def claims():
             exp_dt    = datetime.fromtimestamp(expires_at, tz=timezone.utc)
             remaining = int((exp_dt - datetime.now(tz=timezone.utc)).total_seconds())
             expiry_info = {
-                'expires_at_str':   exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC'),
+                'expires_at_str':    exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC'),
                 'seconds_remaining': max(0, remaining),
                 'expired':           remaining < 0,
             }
@@ -358,8 +437,9 @@ def token_refresh():
               'or the offline_access scope was not requested.', 'warning')
         return redirect(url_for('claims'))
 
+    provider_id = session.get('provider_id', PROVIDERS[0]['id'] if PROVIDERS else 'oidc')
     try:
-        token = oauth.oidc.fetch_access_token(
+        token = oauth.create_client(provider_id).fetch_access_token(
             grant_type='refresh_token',
             refresh_token=refresh_token,
         )
@@ -404,12 +484,13 @@ def decode_tool():
 def logout():
     """Clear the local session. If the provider supports RP-initiated logout
     (end_session_endpoint in discovery metadata), redirect there first."""
-    id_token = session.get('raw_tokens', {}).get('id_token')
+    id_token    = session.get('raw_tokens', {}).get('id_token')
+    provider_id = session.get('provider_id', PROVIDERS[0]['id'] if PROVIDERS else 'oidc')
     session.clear()
 
-    if id_token and OIDC_DISCOVERY_URL:
+    if id_token:
         try:
-            meta = oauth.oidc.load_server_metadata()
+            meta = oauth.create_client(provider_id).load_server_metadata()
             end_session_endpoint = meta.get('end_session_endpoint')
             if end_session_endpoint:
                 params = {

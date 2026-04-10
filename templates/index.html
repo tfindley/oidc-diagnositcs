@@ -61,10 +61,25 @@
 
   {% if config.configured %}
     <div style="text-align:center;">
-      <div class="status-pill pill-ok">&#10003;&nbsp; Provider configured</div>
+      <div class="status-pill pill-ok">&#10003;&nbsp;
+        {% if multi_provider %}
+          {{ providers | length }} provider{{ 's' if providers | length != 1 else '' }} configured
+        {% else %}
+          Provider configured
+        {% endif %}
+      </div>
     </div>
     <div style="text-align:center;margin-bottom:28px;">
-      <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">Sign in via SSO</a>
+      {% if multi_provider %}
+        {% for provider in providers %}
+        <a href="{{ url_for('login_provider', provider_id=provider.id) }}"
+           class="btn btn-primary login-btn" style="margin:4px;">
+          Sign in via {{ provider.name }}
+        </a>
+        {% endfor %}
+      {% else %}
+        <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">Sign in via SSO</a>
+      {% endif %}
     </div>
   {% else %}
     <div style="text-align:center;">
@@ -199,6 +214,8 @@ const APP_CONFIG = {{ {'pkce_method': config.pkce_method, 'token_signing_alg': c
 async function runConnectivityChecks() {
   const serverEl  = document.getElementById('conn-server');
   const browserEl = document.getElementById('conn-browser');
+  // Clear latency spans from any previous run
+  document.querySelectorAll('.conn-latency').forEach(el => el.remove());
   serverEl.textContent  = '⟳ checking…';
   browserEl.textContent = '⟳ checking…';
   serverEl.className  = 'conn-status conn-pending';
