@@ -143,6 +143,9 @@ CLAIM_SCOPES: dict = {
 
 # Scopes that have a known set of claims — used to detect empty grants.
 _SCOPE_KNOWN_CLAIMS: dict = {
+    'openid':  frozenset({'sub', 'iss', 'aud', 'exp', 'iat', 'nbf', 'jti',
+                          'nonce', 'at_hash', 'c_hash', 'acr', 'amr', 'azp',
+                          'auth_time', 'sid', 'session_state', 'typ', 'scope', 'client_id'}),
     'email':   frozenset({'email', 'email_verified'}),
     'profile': frozenset({'name', 'given_name', 'family_name', 'middle_name',
                           'nickname', 'preferred_username', 'profile', 'picture',

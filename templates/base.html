@@ -194,6 +194,7 @@
     .scope-chip-count   { background: rgba(0,0,0,.12); border-radius: 100px; padding: 0 5px; font-size: 0.65rem; }
 
     /* ── Tabs ── */
+    .tabs-wrap { padding: 0 20px; }
     .tabs {
       display: flex; gap: 2px;
       border-bottom: 2px solid var(--border);
@@ -297,8 +298,34 @@
 
     @media (max-width: 640px) {
       main { padding: 16px; }
-      nav  { padding: 0 14px; }
+      /* Nav: allow wrapping to a second row so items don't overflow the viewport */
+      nav {
+        padding: 6px 14px; height: auto; min-height: 44px;
+        flex-wrap: wrap; row-gap: 4px;
+      }
+      /* Hide the brand text on small screens; keep just the icon square */
+      .nav-brand-text { display: none; }
+      /* Truncate long usernames (email addresses) in the user menu button */
+      #user-menu > .btn {
+        max-width: 140px; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap; display: block;
+      }
+      /* Hide the expiry chip from the nav on small screens;
+         it is also shown in the claims page header */
+      #nav-expiry-chip { display: none; }
+      /* Tab bar: scroll horizontally rather than wrapping or overflowing the card */
+      .tabs-wrap { padding: 0; }
+      .tabs {
+        overflow-x: auto; overflow-y: visible;
+        flex-wrap: nowrap; padding: 0 14px;
+        scrollbar-width: none; -ms-overflow-style: none;
+      }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab-btn { white-space: nowrap; flex-shrink: 0; }
     }
+    /* Prevent any overflowing element from causing page-level horizontal scroll.
+       clip (not hidden) is used so sticky nav positioning is not affected. */
+    body { overflow-x: clip; }
 
     /* ── Token expiry chip (nav + claims page) ── */
     .expiry-chip {
@@ -376,7 +403,7 @@
   <nav>
     <a href="{{ url_for('index') }}" class="nav-brand">
       <div class="nav-icon">&#9632;</div>
-      OIDC Diagnostics
+      <span class="nav-brand-text">OIDC Diagnostics</span>
     </a>
     <a href="{{ url_for('decode_tool') }}"
        class="nav-link {% if request.endpoint == 'decode_tool' %}active{% endif %}">
