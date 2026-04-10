@@ -1,9 +1,9 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-# Create a non-root user to run the application
-RUN groupadd --system app && useradd --system --gid app app
+# Create a non-root user with a home directory (required by gunicorn's control server)
+RUN groupadd --system app && useradd --system --gid app --create-home app
 
 # Install dependencies first (layer-cached independently of app code)
 COPY requirements.txt .

@@ -2,8 +2,11 @@ import base64
 import json
 import os
 import secrets
+import time
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
+import requests as http_requests
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from flask import (Flask, flash, jsonify, redirect, render_template,
@@ -13,11 +16,10 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 load_dotenv()
 
 app = Flask(__name__)
-# Trust X-Forwarded-Proto and X-Forwarded-Host from a single reverse proxy (e.g. Traefik).
-# This ensures url_for(..., _external=True) generates https:// URLs when TLS is terminated upstream.
+# Trust X-Forwarded-Proto/Host from a single reverse proxy (e.g. Traefik)
+# so url_for(_external=True) generates https:// when TLS is terminated upstream.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Fallback: if the proxy doesn't forward X-Forwarded-Proto, set PREFERRED_URL_SCHEME=https
 if os.environ.get('PREFERRED_URL_SCHEME'):
     app.config['PREFERRED_URL_SCHEME'] = os.environ['PREFERRED_URL_SCHEME']
 
@@ -27,15 +29,22 @@ if not _secret:
     print("WARNING: SECRET_KEY not set — sessions will be lost on restart. Set it in .env")
 app.secret_key = _secret
 
-OIDC_DISCOVERY_URL = os.environ.get('OIDC_DISCOVERY_URL', '')
-OIDC_CLIENT_ID = os.environ.get('OIDC_CLIENT_ID', '')
-OIDC_CLIENT_SECRET = os.environ.get('OIDC_CLIENT_SECRET', '')
-OIDC_SCOPE = os.environ.get('OIDC_SCOPE', 'openid email profile')
-# PKCE: 'S256' (default, required by Kanidm and recommended), 'plain', or 'disabled'
-OIDC_PKCE_METHOD = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
-# Token signing algorithm to enforce, e.g. 'ES256' or 'RS256'. Empty = accept whatever the server sends.
+# ── OIDC config ───────────────────────────────────────────────────────────────
+OIDC_DISCOVERY_URL  = os.environ.get('OIDC_DISCOVERY_URL', '')
+OIDC_CLIENT_ID      = os.environ.get('OIDC_CLIENT_ID', '')
+OIDC_CLIENT_SECRET  = os.environ.get('OIDC_CLIENT_SECRET', '')
+OIDC_SCOPE          = os.environ.get('OIDC_SCOPE', 'openid email profile')
+OIDC_PKCE_METHOD    = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
 OIDC_TOKEN_SIGNING_ALG = os.environ.get('OIDC_TOKEN_SIGNING_ALG', '').strip()
 
+# ── UI config ─────────────────────────────────────────────────────────────────
+# SHOW_CONFIG=true reveals the full config card on the landing page.
+# Defaults to false (hidden) — recommended for shared/internal deployments.
+SHOW_CONFIG = os.environ.get('SHOW_CONFIG', 'false').lower() == 'true'
+GITHUB_URL  = os.environ.get('GITHUB_URL', 'https://github.com/tfindley/sso_oidc_client_tool')
+KOFI_URL    = os.environ.get('KOFI_URL', '')
+
+# ── Claims metadata ───────────────────────────────────────────────────────────
 TIMESTAMP_CLAIMS = frozenset({'exp', 'iat', 'nbf', 'auth_time', 'updated_at'})
 SENSITIVE_CLAIMS = frozenset({
     'sub', 'email', 'name', 'given_name', 'family_name',
@@ -43,7 +52,6 @@ SENSITIVE_CLAIMS = frozenset({
     'profile', 'jti', 'sid', 'session_state',
 })
 
-# Human-readable descriptions for standard OIDC / Keycloak claims
 CLAIM_DESCRIPTIONS = {
     'sub': 'Subject — Unique, stable identifier for this user at this issuer',
     'iss': 'Issuer — URL of the authorization server that issued the token',
@@ -72,7 +80,7 @@ CLAIM_DESCRIPTIONS = {
     'nonce': 'Nonce — Replay-prevention value; must match what was sent in the auth request',
     'at_hash': 'Access Token Hash — Cryptographically binds the ID token to the access token',
     'c_hash': 'Code Hash — Binds the ID token to the authorization code',
-    'acr': 'Authentication Context Class Reference — Assurance level (e.g. 0 = SSO, 1 = password)',
+    'acr': 'Authentication Context Class Reference — Assurance level (e.g. 0 = SSO cookie, 1 = password)',
     'amr': 'Authentication Methods References — How the user authenticated (e.g. pwd, otp, mfa)',
     'azp': 'Authorized Party — client_id this token was issued to',
     'auth_time': 'Authentication Time — When the user last authenticated interactively (Unix timestamp)',
@@ -95,6 +103,7 @@ CLAIM_DESCRIPTIONS = {
     'unique_name': 'Unique Name — Azure AD display name',
 }
 
+# ── OAuth registration ────────────────────────────────────────────────────────
 oauth = OAuth(app)
 if OIDC_DISCOVERY_URL and OIDC_CLIENT_ID:
     _client_kwargs = {'scope': OIDC_SCOPE}
@@ -107,6 +116,17 @@ if OIDC_DISCOVERY_URL and OIDC_CLIENT_ID:
         client_secret=OIDC_CLIENT_SECRET,
         client_kwargs=_client_kwargs,
     )
+
+
+# ── Template context processor ────────────────────────────────────────────────
+@app.context_processor
+def inject_globals():
+    """Make site-wide config available in all templates without explicit passing."""
+    return {
+        'github_url': GITHUB_URL,
+        'kofi_url': KOFI_URL,
+        'show_config': SHOW_CONFIG,
+    }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -179,15 +199,15 @@ def build_compare_table(id_payload: dict, access_payload: dict, userinfo: dict) 
     all_keys = sorted(set(list(id_payload) + list(access_payload) + list(userinfo)))
     rows = []
     for key in all_keys:
-        id_val = id_payload.get(key)
+        id_val  = id_payload.get(key)
         acc_val = access_payload.get(key)
-        ui_val = userinfo.get(key)
-        # Flag if same key has different values across sources
+        ui_val  = userinfo.get(key)
         present_vals = [v for v in (id_val, acc_val, ui_val) if v is not None]
         mismatch = len(set(json.dumps(v, sort_keys=True, default=str) for v in present_vals)) > 1
         rows.append({
             'key': key,
             'description': CLAIM_DESCRIPTIONS.get(key, ''),
+            'is_sensitive': key in SENSITIVE_CLAIMS,
             'in_id': key in id_payload,
             'in_access': key in access_payload,
             'in_userinfo': key in userinfo,
@@ -221,23 +241,40 @@ def login():
     if not (OIDC_DISCOVERY_URL and OIDC_CLIENT_ID):
         flash('OIDC provider not configured — set OIDC_DISCOVERY_URL and OIDC_CLIENT_ID in .env', 'error')
         return redirect(url_for('index'))
-    return oauth.oidc.authorize_redirect(url_for('auth_callback', _external=True))
+    try:
+        session['login_start'] = time.time()
+        return oauth.oidc.authorize_redirect(url_for('auth_callback', _external=True))
+    except Exception as exc:
+        flash(f'Could not reach the OIDC provider: {exc}', 'error')
+        return redirect(url_for('index'))
 
 
 @app.route('/callback')
 def auth_callback():
-    claims_options = {}
-    if OIDC_TOKEN_SIGNING_ALG:
-        claims_options['alg'] = {'values': [OIDC_TOKEN_SIGNING_ALG]}
-    token = oauth.oidc.authorize_access_token(**({"claims_options": claims_options} if claims_options else {}))
+    try:
+        claims_options = {}
+        if OIDC_TOKEN_SIGNING_ALG:
+            claims_options['alg'] = {'values': [OIDC_TOKEN_SIGNING_ALG]}
+        token = oauth.oidc.authorize_access_token(
+            **({"claims_options": claims_options} if claims_options else {})
+        )
+    except Exception as exc:
+        flash(f'Authentication failed: {exc}', 'error')
+        return redirect(url_for('index'))
+
+    login_duration = None
+    if 'login_start' in session:
+        login_duration = round(time.time() - session.pop('login_start'), 2)
+
     session['raw_tokens'] = {
-        'access_token': token.get('access_token'),
-        'id_token': token.get('id_token'),
+        'access_token':  token.get('access_token'),
+        'id_token':      token.get('id_token'),
         'refresh_token': token.get('refresh_token'),
-        'token_type': token.get('token_type', 'Bearer'),
-        'expires_at': token.get('expires_at'),
-        'scope': token.get('scope', ''),
+        'token_type':    token.get('token_type', 'Bearer'),
+        'expires_at':    token.get('expires_at'),
+        'scope':         token.get('scope', ''),
     }
+    session['login_duration'] = login_duration
     userinfo = token.get('userinfo') or {}
     session['userinfo'] = userinfo
     session['user'] = (
@@ -254,28 +291,29 @@ def claims():
         return redirect(url_for('index'))
 
     raw_tokens = session.get('raw_tokens', {})
-    userinfo = session.get('userinfo', {})
+    userinfo   = session.get('userinfo', {})
 
-    id_data = decode_jwt(raw_tokens.get('id_token', ''))
+    id_data     = decode_jwt(raw_tokens.get('id_token', ''))
     access_data = decode_jwt(raw_tokens.get('access_token', ''))
 
-    id_payload = id_data.get('payload', {}) if not id_data.get('error') else {}
+    id_payload     = id_data.get('payload', {}) if not id_data.get('error') else {}
     access_payload = access_data.get('payload', {}) if not access_data.get('error') else {}
 
-    # Expiry info from the access token expires_at field
     expiry_info = None
-    expires_at = raw_tokens.get('expires_at')
+    expires_at  = raw_tokens.get('expires_at')
     if expires_at:
         try:
-            exp_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+            exp_dt    = datetime.fromtimestamp(expires_at, tz=timezone.utc)
             remaining = int((exp_dt - datetime.now(tz=timezone.utc)).total_seconds())
             expiry_info = {
-                'expires_at_str': exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC'),
+                'expires_at_str':   exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC'),
                 'seconds_remaining': max(0, remaining),
-                'expired': remaining < 0,
+                'expired':           remaining < 0,
             }
         except Exception:
             pass
+
+    has_refresh_token = bool(raw_tokens.get('refresh_token'))
 
     return render_template('claims.html',
         username=session.get('user'),
@@ -289,6 +327,8 @@ def claims():
         compare_rows=build_compare_table(id_payload, access_payload, userinfo),
         raw_tokens=raw_tokens,
         expiry_info=expiry_info,
+        has_refresh_token=has_refresh_token,
+        login_duration=session.get('login_duration'),
     )
 
 
@@ -296,20 +336,57 @@ def claims():
 def claims_json():
     if not session.get('user'):
         return jsonify({'error': 'not authenticated'}), 401
-    raw_tokens = session.get('raw_tokens', {})
-    userinfo = session.get('userinfo', {})
-    id_data = decode_jwt(raw_tokens.get('id_token', ''))
+    raw_tokens  = session.get('raw_tokens', {})
+    userinfo    = session.get('userinfo', {})
+    id_data     = decode_jwt(raw_tokens.get('id_token', ''))
     access_data = decode_jwt(raw_tokens.get('access_token', ''))
     return jsonify({
-        'id_token': id_data.get('payload', {}),
+        'id_token':     id_data.get('payload', {}),
         'access_token': access_data.get('payload', {}),
-        'userinfo': userinfo,
+        'userinfo':     userinfo,
     })
+
+
+@app.route('/refresh')
+def token_refresh():
+    if not session.get('user'):
+        return redirect(url_for('index'))
+
+    refresh_token = session.get('raw_tokens', {}).get('refresh_token')
+    if not refresh_token:
+        flash('No refresh token in session — your provider may not issue refresh tokens, '
+              'or the offline_access scope was not requested.', 'warning')
+        return redirect(url_for('claims'))
+
+    try:
+        token = oauth.oidc.fetch_access_token(
+            grant_type='refresh_token',
+            refresh_token=refresh_token,
+        )
+    except Exception as exc:
+        flash(f'Token refresh failed: {exc}', 'error')
+        return redirect(url_for('claims'))
+
+    # Preserve the id_token and refresh_token if the server doesn't re-issue them
+    old_tokens = session.get('raw_tokens', {})
+    session['raw_tokens'] = {
+        'access_token':  token.get('access_token'),
+        'id_token':      token.get('id_token') or old_tokens.get('id_token'),
+        'refresh_token': token.get('refresh_token') or refresh_token,
+        'token_type':    token.get('token_type', 'Bearer'),
+        'expires_at':    token.get('expires_at'),
+        'scope':         token.get('scope', ''),
+    }
+    if token.get('userinfo'):
+        session['userinfo'] = token['userinfo']
+
+    flash('Token refreshed successfully.', 'success')
+    return redirect(url_for('claims'))
 
 
 @app.route('/decode', methods=['GET', 'POST'])
 def decode_tool():
-    decoded = None
+    decoded     = None
     claims_list = None
     token_input = request.form.get('token', '').strip()
     if token_input:
@@ -325,8 +402,70 @@ def decode_tool():
 
 @app.route('/logout')
 def logout():
+    """Clear the local session. If the provider supports RP-initiated logout
+    (end_session_endpoint in discovery metadata), redirect there first."""
+    id_token = session.get('raw_tokens', {}).get('id_token')
     session.clear()
+
+    if id_token and OIDC_DISCOVERY_URL:
+        try:
+            meta = oauth.oidc.load_server_metadata()
+            end_session_endpoint = meta.get('end_session_endpoint')
+            if end_session_endpoint:
+                params = {
+                    'id_token_hint':            id_token,
+                    'post_logout_redirect_uri': url_for('index', _external=True),
+                }
+                return redirect(f'{end_session_endpoint}?{urlencode(params)}')
+        except Exception:
+            pass  # Fall through to local-only logout
+
     return redirect(url_for('index'))
+
+
+# ── API endpoints ─────────────────────────────────────────────────────────────
+
+@app.route('/api/connectivity')
+def api_connectivity():
+    """Server-side check: can this app reach the OIDC discovery URL?"""
+    if not OIDC_DISCOVERY_URL:
+        return jsonify({'status': 'unconfigured', 'message': 'No OIDC_DISCOVERY_URL set'})
+    try:
+        resp = http_requests.get(OIDC_DISCOVERY_URL, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        return jsonify({
+            'status':     'ok',
+            'issuer':     data.get('issuer', ''),
+            'latency_ms': int(resp.elapsed.total_seconds() * 1000),
+        })
+    except http_requests.exceptions.ConnectionError as exc:
+        return jsonify({'status': 'error', 'message': f'Connection refused or DNS failure: {exc}'})
+    except http_requests.exceptions.Timeout:
+        return jsonify({'status': 'error', 'message': 'Timed out after 5 seconds'})
+    except Exception as exc:
+        return jsonify({'status': 'error', 'message': str(exc)})
+
+
+@app.route('/api/discovery')
+def api_discovery():
+    """Fetch and return the raw OIDC discovery document, augmented with
+    which algorithms/methods are currently configured in this app."""
+    if not OIDC_DISCOVERY_URL:
+        return jsonify({'error': 'No OIDC_DISCOVERY_URL configured'})
+    try:
+        resp = http_requests.get(OIDC_DISCOVERY_URL, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
+        data['_app_config'] = {
+            'pkce_method':       OIDC_PKCE_METHOD,
+            'token_signing_alg': OIDC_TOKEN_SIGNING_ALG or None,
+            'scope':             OIDC_SCOPE,
+            'latency_ms':        int(resp.elapsed.total_seconds() * 1000),
+        }
+        return jsonify(data)
+    except Exception as exc:
+        return jsonify({'error': str(exc)})
 
 
 if __name__ == '__main__':

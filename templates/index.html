@@ -3,20 +3,13 @@
 
 {% block extra_css %}
 .hero {
-  max-width: 560px;
-  margin: 64px auto;
-  text-align: center;
+  max-width: 600px;
+  margin: 48px auto;
 }
 .hero h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 10px; }
 .hero p  { color: var(--muted); margin-bottom: 28px; }
-.login-btn {
-  font-size: 1rem; padding: 12px 32px;
-  border-radius: 8px; margin-bottom: 40px;
-}
-.config-card {
-  text-align: left;
-  margin-top: 24px;
-}
+.login-btn { font-size: 1rem; padding: 12px 32px; border-radius: 8px; }
+
 .config-row {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 0; border-bottom: 1px solid var(--border);
@@ -25,6 +18,7 @@
 .config-row:last-child { border-bottom: none; }
 .config-label { width: 160px; flex-shrink: 0; color: var(--muted); font-weight: 500; }
 .config-val   { font-family: var(--mono); word-break: break-all; flex: 1; }
+
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 3px 10px; border-radius: 100px; font-size: 0.8125rem; font-weight: 500;
@@ -32,50 +26,73 @@
 }
 .pill-ok  { background: #d1e7dd; color: #0f5132; }
 .pill-err { background: #f8d7da; color: #842029; }
+
+/* Connectivity check */
+.conn-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+.conn-row:last-child { border-bottom: none; }
+.conn-label { flex: 1; }
+.conn-status { font-size: 0.75rem; font-weight: 600; }
+.conn-ok     { color: var(--green); }
+.conn-err    { color: var(--red); }
+.conn-pending{ color: var(--muted); }
+.conn-latency{ font-size: 0.75rem; color: var(--muted); }
+
+/* Discovery metadata */
+.disc-field { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
+.disc-field:last-child { border-bottom: none; }
+.disc-key { font-family: var(--mono); font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.disc-desc { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+.disc-val { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); word-break: break-all; }
+.disc-alg-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.disc-alg { padding: 1px 7px; border-radius: 4px; font-family: var(--mono); font-size: 0.75rem;
+             background: var(--surface2); border: 1px solid var(--border); }
+.disc-alg.in-use { background: #dde3fd; color: var(--primary); border-color: #c5cdf9; font-weight: 600; }
 {% endblock %}
 
 {% block content %}
 <div class="hero">
   <div class="nav-icon" style="width:52px;height:52px;font-size:26px;border-radius:14px;margin:0 auto 20px;">&#9632;</div>
-  <h1>OIDC Diagnostic Tool</h1>
-  <p>Log in via your SSO provider and inspect every claim from the ID token,<br>access token, and UserInfo endpoint side by side.</p>
+  <h1 style="text-align:center;">OIDC Diagnostic Tool</h1>
+  <p style="text-align:center;">Log in via your SSO provider and inspect every claim from the ID token,<br>access token, and UserInfo endpoint side by side.</p>
 
   {% if config.configured %}
-    <div class="status-pill pill-ok">&#10003;&nbsp; Provider configured</div><br>
-    <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">
-      Sign in via SSO
-    </a>
+    <div style="text-align:center;">
+      <div class="status-pill pill-ok">&#10003;&nbsp; Provider configured</div>
+    </div>
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="{{ url_for('login') }}" class="btn btn-primary login-btn">Sign in via SSO</a>
+    </div>
   {% else %}
-    <div class="status-pill pill-err">&#9888;&nbsp; Provider not configured</div>
-    <div class="alert alert-warning" style="text-align:left;">
+    <div style="text-align:center;">
+      <div class="status-pill pill-err">&#9888;&nbsp; Provider not configured</div>
+    </div>
+    <div class="alert alert-warning">
       <strong>Setup required.</strong> Copy <code>.env.example</code> to <code>.env</code>
       and fill in your Keycloak (or other OIDC provider) details, then restart the server.
     </div>
   {% endif %}
 
-  <div class="card config-card">
-    <div class="card-header">
-      <span class="card-title">Current Configuration</span>
-    </div>
+  {# ── Configuration card (hidden by default; set SHOW_CONFIG=true to reveal) ── #}
+  {% if show_config %}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><span class="card-title">Configuration</span></div>
     <div class="card-body" style="padding:0 20px;">
       <div class="config-row">
         <span class="config-label">Discovery URL</span>
         <span class="config-val">
-          {% if config.discovery_url %}
-            {{ config.discovery_url }}
-          {% else %}
-            <span class="text-danger">not set</span>
-          {% endif %}
+          {% if config.discovery_url %}{{ config.discovery_url }}
+          {% else %}<span class="text-danger">not set</span>{% endif %}
         </span>
       </div>
       <div class="config-row">
         <span class="config-label">Client ID</span>
         <span class="config-val">
-          {% if config.client_id %}
-            {{ config.client_id }}
-          {% else %}
-            <span class="text-danger">not set</span>
-          {% endif %}
+          {% if config.client_id %}{{ config.client_id }}
+          {% else %}<span class="text-danger">not set</span>{% endif %}
         </span>
       </div>
       <div class="config-row">
@@ -102,14 +119,172 @@
       </div>
       <div class="config-row">
         <span class="config-label">Callback URL</span>
-        <span class="config-val">{{ request.host_url }}callback</span>
+        <span class="config-val">{{ request.url_root }}callback</span>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted" style="font-size:0.75rem;text-align:center;margin-bottom:16px;">
+    Configuration details are hidden. Set <code>SHOW_CONFIG=true</code> to reveal them.
+  </p>
+  {% endif %}
+
+  {# ── Connectivity check ── #}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <span class="card-title">Connectivity</span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="runConnectivityChecks()">
+        &#8635; Check
+      </button>
+    </div>
+    <div id="conn-results">
+      <div class="conn-row">
+        <span class="conn-label">App server &#8594; OIDC provider</span>
+        <span class="conn-status conn-pending" id="conn-server">— click Check</span>
+      </div>
+      <div class="conn-row">
+        <span class="conn-label">Browser &#8594; OIDC provider</span>
+        <span class="conn-status conn-pending" id="conn-browser">— click Check</span>
       </div>
     </div>
   </div>
 
-  <p class="text-muted mt-4" style="font-size:0.8125rem;">
-    You can also use the <a href="{{ url_for('decode_tool') }}">JWT Decoder</a>
-    to paste and decode any JWT token without logging in.
+  {# ── Provider discovery panel ── #}
+  {% if config.discovery_url %}
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header">
+      <span class="card-title">Provider Metadata <span class="text-muted" style="font-weight:400;font-size:0.8125rem;">/.well-known</span></span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="loadDiscovery()">
+        &#8635; Load
+      </button>
+    </div>
+    <div id="discovery-panel">
+      <p class="text-muted" style="padding:20px;font-size:0.8125rem;">Click Load to fetch the provider's discovery document.</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="text-muted" style="font-size:0.8125rem;text-align:center;">
+    Use the <a href="{{ url_for('decode_tool') }}">JWT Decoder</a> to inspect any token without logging in.
+    See the <strong>? Help</strong> menu for connectivity guide and scope reference.
   </p>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DISCOVERY_URL = {{ config.discovery_url | tojson }};
+
+// Key fields to render in the discovery panel, with descriptions
+const DISC_FIELDS = [
+  { key: 'issuer',                                    label: 'Issuer',                    desc: 'The authoritative URL for this provider. Must match the iss claim in tokens.' },
+  { key: 'authorization_endpoint',                    label: 'Authorization endpoint',    desc: 'Where the browser is redirected for user login.' },
+  { key: 'token_endpoint',                            label: 'Token endpoint',             desc: 'Where the app exchanges the auth code for tokens (back-channel).' },
+  { key: 'userinfo_endpoint',                         label: 'UserInfo endpoint',          desc: 'Where the app fetches additional user profile claims.' },
+  { key: 'jwks_uri',                                  label: 'JWKS URI',                   desc: 'Public keys used to verify token signatures.' },
+  { key: 'end_session_endpoint',                      label: 'End session endpoint',       desc: 'RP-initiated logout endpoint. Not all providers support this (e.g. Kanidm does not).' },
+  { key: 'scopes_supported',                          label: 'Scopes supported',           desc: 'OAuth 2.0 scopes this server accepts.' },
+  { key: 'response_types_supported',                  label: 'Response types',             desc: 'Supported response_type values for the authorization endpoint.' },
+  { key: 'grant_types_supported',                     label: 'Grant types',                desc: 'Supported OAuth 2.0 grant types.' },
+  { key: 'code_challenge_methods_supported',          label: 'PKCE methods',               desc: 'Supported PKCE code_challenge_method values. S256 is recommended; plain is less secure.', configKey: 'pkce_method' },
+  { key: 'id_token_signing_alg_values_supported',     label: 'ID token signing algs',      desc: 'Algorithms used to sign ID tokens. ES256 (ECDSA) is preferred over RS256 (RSA).', configKey: 'token_signing_alg' },
+  { key: 'userinfo_signing_alg_values_supported',     label: 'UserInfo signing algs',      desc: 'Algorithms used to sign UserInfo responses (if signed).' },
+  { key: 'token_endpoint_auth_methods_supported',     label: 'Token endpoint auth',        desc: 'How the client authenticates to the token endpoint (e.g. client_secret_basic).' },
+  { key: 'claims_supported',                          label: 'Claims supported',           desc: 'Claims this server may return. Actual claims depend on granted scopes.' },
+  { key: 'subject_types_supported',                   label: 'Subject types',              desc: 'public = consistent sub across clients; pairwise = unique sub per client (privacy).' },
+];
+
+const APP_CONFIG = {{ {'pkce_method': config.pkce_method, 'token_signing_alg': config.token_signing_alg} | tojson }};
+
+async function runConnectivityChecks() {
+  const serverEl  = document.getElementById('conn-server');
+  const browserEl = document.getElementById('conn-browser');
+  serverEl.textContent  = '⟳ checking…';
+  browserEl.textContent = '⟳ checking…';
+  serverEl.className  = 'conn-status conn-pending';
+  browserEl.className = 'conn-status conn-pending';
+
+  // Server-side check (proxied through app)
+  fetch('/api/connectivity')
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'ok') {
+        serverEl.textContent = '✓ reachable';
+        serverEl.className = 'conn-status conn-ok';
+        serverEl.insertAdjacentHTML('afterend', ` <span class="conn-latency">${data.latency_ms}ms</span>`);
+      } else {
+        serverEl.textContent = '✗ ' + (data.message || 'error');
+        serverEl.className = 'conn-status conn-err';
+      }
+    })
+    .catch(e => { serverEl.textContent = '✗ ' + e; serverEl.className = 'conn-status conn-err'; });
+
+  // Browser-side check (direct fetch from user's browser)
+  if (!DISCOVERY_URL) {
+    browserEl.textContent = '— no URL configured';
+    return;
+  }
+  const t0 = Date.now();
+  fetch(DISCOVERY_URL, { method: 'GET', mode: 'cors' })
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const ms = Date.now() - t0;
+      browserEl.textContent = '✓ reachable';
+      browserEl.className = 'conn-status conn-ok';
+      browserEl.insertAdjacentHTML('afterend', ` <span class="conn-latency">${ms}ms</span>`);
+    })
+    .catch(e => {
+      browserEl.textContent = '✗ ' + e.message;
+      browserEl.className = 'conn-status conn-err';
+    });
+}
+
+async function loadDiscovery() {
+  const panel = document.getElementById('discovery-panel');
+  panel.innerHTML = '<p class="text-muted" style="padding:16px;font-size:0.8125rem;">Loading…</p>';
+
+  let data;
+  try {
+    const resp = await fetch('/api/discovery');
+    data = await resp.json();
+  } catch(e) {
+    panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">Failed to load: ${e}</div>`;
+    return;
+  }
+  if (data.error) {
+    panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">${data.error}</div>`;
+    return;
+  }
+
+  const appCfg = data._app_config || {};
+  let html = '<div style="padding:0 20px;">';
+
+  for (const f of DISC_FIELDS) {
+    const val = data[f.key];
+    if (val === undefined) continue;
+    html += `<div class="disc-field">
+      <div class="disc-key">${f.key}</div>
+      <div class="disc-desc">${f.desc}</div>
+      <div class="disc-val">`;
+
+    if (Array.isArray(val)) {
+      html += '<div class="disc-alg-list">';
+      for (const item of val) {
+        const inUse = f.configKey && appCfg[f.configKey] === item;
+        html += `<span class="disc-alg${inUse ? ' in-use' : ''}" title="${inUse ? 'Currently configured in this app' : ''}">${item}${inUse ? ' ✓' : ''}</span>`;
+      }
+      html += '</div>';
+    } else {
+      html += String(val);
+    }
+    html += '</div></div>';
+  }
+
+  if (appCfg.latency_ms !== undefined) {
+    html += `<p class="text-muted" style="font-size:0.75rem;padding:8px 0;">Fetched in ${appCfg.latency_ms}ms</p>`;
+  }
+  html += '</div>';
+  panel.innerHTML = html;
+}
+</script>
 {% endblock %}

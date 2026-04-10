@@ -268,6 +268,66 @@
       nav  { padding: 0 14px; }
     }
 
+    /* ── Help dropdown ── */
+    .help-menu { position: relative; }
+    .help-dropdown {
+      display: none; position: absolute; right: 0; top: calc(100% + 6px);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); min-width: 210px; z-index: 300;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+      padding: 4px 0;
+    }
+    .help-dropdown.open { display: block; }
+    .help-item {
+      display: block; width: 100%; text-align: left;
+      padding: 7px 14px; font-size: 0.875rem;
+      background: none; border: none; cursor: pointer;
+      color: var(--text); text-decoration: none;
+      transition: background .1s;
+    }
+    .help-item:hover { background: var(--bg); }
+    .help-section-label {
+      padding: 6px 14px 2px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted);
+    }
+    .help-divider { border-top: 1px solid var(--border); margin: 4px 0; }
+
+    /* ── Modals ── */
+    .modal { border: none; border-radius: var(--radius); padding: 0; max-width: 90vw; }
+    .modal::backdrop { background: rgba(0,0,0,.45); }
+    .modal-box { width: 620px; max-width: 100%; }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 1rem; font-weight: 600; }
+    .modal-close {
+      background: none; border: none; font-size: 1.125rem;
+      cursor: pointer; color: var(--muted); padding: 2px 6px; border-radius: 4px;
+    }
+    .modal-close:hover { background: var(--bg); }
+    .modal-body { padding: 20px; overflow-y: auto; max-height: 70vh; }
+
+    /* ── Connectivity flow diagram ── */
+    .flow-diagram { display: flex; flex-direction: column; gap: 4px; }
+    .flow-box {
+      padding: 8px 14px; border-radius: 6px; font-weight: 600;
+      font-size: 0.875rem; display: inline-block; align-self: flex-start;
+    }
+    .flow-browser { background: #dde3fd; color: #2b3fc4; }
+    .flow-app     { background: #d1e7dd; color: #0f5132; }
+    .flow-sso     { background: #fff3cd; color: #664d03; }
+    .flow-arrows  { padding: 4px 0 4px 20px; border-left: 2px solid var(--border); margin-left: 16px; }
+    .flow-arrow   { font-size: 0.8125rem; padding: 2px 0; }
+
+    /* ── OIDC flow pre ── */
+    .oidc-flow-diagram {
+      font-size: 0.72rem; line-height: 1.6; overflow-x: auto;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px;
+    }
+
     {% block extra_css %}{% endblock %}
   </style>
 </head>
@@ -294,7 +354,162 @@
       <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm">Sign out</a>
     </div>
     {% endif %}
+
+    <!-- Help dropdown -->
+    <div class="help-menu" id="help-menu">
+      <button class="btn btn-ghost btn-sm" onclick="toggleHelp()" aria-haspopup="true">
+        &#63; Help
+      </button>
+      <div class="help-dropdown" id="help-dropdown" role="menu">
+        <div class="help-section-label">About</div>
+        <a class="help-item" href="{{ github_url }}" target="_blank" rel="noopener">
+          &#128279; Source code (GitHub)
+        </a>
+        {% if kofi_url %}
+        <a class="help-item" href="{{ kofi_url }}" target="_blank" rel="noopener">
+          &#9749; Support on Ko-fi
+        </a>
+        {% endif %}
+        <div class="help-divider"></div>
+        <div class="help-section-label">Reference</div>
+        <button class="help-item" onclick="showModal('modal-connectivity')">&#128268; Connectivity guide</button>
+        <button class="help-item" onclick="showModal('modal-scopes')">&#128195; Scopes &amp; claims</button>
+        <button class="help-item" onclick="showModal('modal-oidc-flow')">&#8594; OIDC flow</button>
+      </div>
+    </div>
   </nav>
+
+  <!-- ── Connectivity guide modal ── -->
+  <dialog id="modal-connectivity" class="modal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span class="modal-title">Connectivity Guide</span>
+        <button onclick="closeModal('modal-connectivity')" class="modal-close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted" style="margin-bottom:16px;font-size:0.875rem;">
+          This tool involves three parties. All of the paths below must be reachable for login to work.
+        </p>
+        <div class="flow-diagram">
+          <div class="flow-box flow-browser">&#128100; Browser</div>
+          <div class="flow-arrows">
+            <div class="flow-arrow">&#8594; <code>GET /</code>, <code>/login</code>, <code>/claims</code> <span class="text-muted">(HTTP/S to this app)</span></div>
+            <div class="flow-arrow">&#8594; Redirected to <code>/authorize</code> on the SSO server <span class="text-muted">(login UI)</span></div>
+            <div class="flow-arrow">&#8594; Redirected back to <code>/callback</code> on this app <span class="text-muted">(with auth code)</span></div>
+          </div>
+          <div class="flow-box flow-app">&#128187; This App (server)</div>
+          <div class="flow-arrows">
+            <div class="flow-arrow">&#8594; Fetches <code>/.well-known/openid-configuration</code> <span class="text-muted">(on startup and login)</span></div>
+            <div class="flow-arrow">&#8594; Exchanges auth code for tokens at <code>token_endpoint</code> <span class="text-muted">(back-channel)</span></div>
+            <div class="flow-arrow">&#8594; Fetches <code>jwks_uri</code> to verify token signatures</div>
+            <div class="flow-arrow">&#8594; Fetches <code>userinfo_endpoint</code> for profile claims</div>
+          </div>
+          <div class="flow-box flow-sso">&#128274; SSO Server (Keycloak / Kanidm / etc.)</div>
+        </div>
+        <div class="alert alert-info" style="margin-top:16px;">
+          <strong>Common issue:</strong> The browser can reach the SSO login page, but the app's back-channel
+          token exchange fails. This happens when the container can't resolve the SSO server hostname
+          (DNS differs inside Docker). Use the connectivity check on the home page to diagnose.
+        </div>
+        <h4 style="margin:16px 0 8px;">Logout</h4>
+        <p class="text-muted" style="font-size:0.875rem;">
+          RP-initiated logout sends the browser to the SSO server's <code>end_session_endpoint</code> with
+          the <code>id_token_hint</code> and a <code>post_logout_redirect_uri</code>. Keycloak supports this;
+          Kanidm currently does not (local-only session clear happens instead).
+          Register <code>{{ request.host_url }}</code> as an allowed post-logout URI in your client config.
+        </p>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ── Scopes & claims modal ── -->
+  <dialog id="modal-scopes" class="modal">
+    <div class="modal-box" style="max-width:700px;">
+      <div class="modal-head">
+        <span class="modal-title">Standard OIDC Scopes &amp; Their Claims</span>
+        <button onclick="closeModal('modal-scopes')" class="modal-close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted" style="margin-bottom:16px;font-size:0.875rem;">
+          The claims you receive depend entirely on which scopes you request. Add scopes to
+          <code>OIDC_SCOPE</code> in your <code>.env</code> file. You must also grant the scopes
+          in your provider's client configuration.
+        </p>
+        <table>
+          <thead><tr><th style="width:130px">Scope</th><th>Claims provided</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td><code>openid</code></td><td><code>sub</code>, <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>iat</code></td><td>Required — activates OIDC mode</td></tr>
+            <tr><td><code>email</code></td><td><code>email</code>, <code>email_verified</code></td><td>Standard OIDC</td></tr>
+            <tr><td><code>profile</code></td><td><code>name</code>, <code>given_name</code>, <code>family_name</code>, <code>preferred_username</code>, <code>picture</code>, <code>locale</code>, <code>zoneinfo</code>, <code>updated_at</code></td><td>Standard OIDC</td></tr>
+            <tr><td><code>address</code></td><td><code>address</code></td><td>Standard OIDC — rarely used</td></tr>
+            <tr><td><code>phone</code></td><td><code>phone_number</code>, <code>phone_number_verified</code></td><td>Standard OIDC — rarely used</td></tr>
+            <tr><td><code>offline_access</code></td><td>(no new claims)</td><td>Requests a refresh token; provider must allow it</td></tr>
+            <tr><td><code>roles</code></td><td><code>realm_access</code>, <code>resource_access</code></td><td><span class="badge badge-yellow">Keycloak-specific</span> — not part of the OIDC spec</td></tr>
+            <tr><td><code>groups</code></td><td><code>groups</code></td><td><span class="badge badge-yellow">Provider-specific</span> — varies by server</td></tr>
+          </tbody>
+        </table>
+        <div class="alert alert-info" style="margin-top:16px;">
+          <strong>Want more claims?</strong> You can't add scopes mid-session — OIDC scopes are set at
+          login time. To get additional claims, add the scopes to <code>OIDC_SCOPE</code> and sign in again.
+          The server only returns claims for scopes it has granted, so you may also need to configure
+          the scope in your provider's client/consent settings.
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ── OIDC flow modal ── -->
+  <dialog id="modal-oidc-flow" class="modal">
+    <div class="modal-box" style="max-width:680px;">
+      <div class="modal-head">
+        <span class="modal-title">OIDC Authorization Code Flow</span>
+        <button onclick="closeModal('modal-oidc-flow')" class="modal-close">&#x2715;</button>
+      </div>
+      <div class="modal-body">
+        <pre class="oidc-flow-diagram">Browser                    This App                   SSO Server
+  │                            │                            │
+  │  GET /login                │                            │
+  │ ──────────────────────────►│                            │
+  │                            │  Generate code_verifier    │
+  │                            │  (PKCE S256)               │
+  │                            │                            │
+  │  302 → /authorize          │                            │
+  │◄───────────────────────────│                            │
+  │                            │                            │
+  │  GET /authorize?client_id  │                            │
+  │  &code_challenge=...       │                            │
+  │ ───────────────────────────────────────────────────────►│
+  │                            │                            │  Show login UI
+  │  User authenticates        │                            │◄──────────────
+  │ ◄───────────────────────────────────────────────────────│
+  │                            │                            │
+  │  302 → /callback?code=...  │                            │
+  │◄───────────────────────────────────────────────────────-│
+  │                            │                            │
+  │  GET /callback?code=...    │                            │
+  │ ──────────────────────────►│                            │
+  │                            │  POST /token               │
+  │                            │  {code, code_verifier}     │
+  │                            │ ──────────────────────────►│
+  │                            │                            │  Verify PKCE
+  │                            │  {access_token, id_token,  │  Sign tokens (ES256)
+  │                            │   refresh_token, userinfo} │◄──────────────
+  │                            │◄───────────────────────────│
+  │                            │                            │
+  │                            │  GET /userinfo             │
+  │                            │ ──────────────────────────►│
+  │                            │◄───────────────────────────│
+  │                            │                            │
+  │  302 → /claims             │  Store tokens in session   │
+  │◄───────────────────────────│                            │</pre>
+        <p class="text-muted" style="margin-top:12px;font-size:0.8125rem;">
+          The <strong>code_verifier</strong> never leaves the app server, so intercepting the auth code
+          is useless without it — this is the security benefit of PKCE. Token signing (ES256/RS256) lets
+          the app verify tokens were issued by the expected server without a back-channel call.
+        </p>
+      </div>
+    </div>
+  </dialog>
 
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -353,17 +568,42 @@
 
   // ── Mask / unmask sensitive values ────────────────────────────────────────
   // scope: optional CSS selector limiting which .sensitive elements are toggled.
-  // State is stored on the button via data-masked to avoid module-level variables.
+  // State stored on data-masked attribute; re-applies when tabs switch.
   function toggleMask(btn, scope) {
-    const container = scope ? document.querySelector(scope) : document;
     const isMasked = btn.dataset.masked === '1';
     btn.dataset.masked = isMasked ? '' : '1';
-    (container || document).querySelectorAll('.sensitive').forEach(el => {
-      el.style.filter = isMasked ? '' : 'blur(6px)';
-    });
+    applyMask(btn, scope);
     btn.classList.toggle('btn-toggle-on', !isMasked);
     btn.textContent = isMasked ? '\uD83D\uDC41 Mask sensitive' : '\uD83D\uDC41 Unmask sensitive';
   }
+  function applyMask(btn, scope) {
+    const isMasked = btn.dataset.masked === '1';
+    const container = scope ? document.querySelector(scope) : document;
+    (container || document).querySelectorAll('.sensitive').forEach(el => {
+      el.style.filter = isMasked ? 'blur(6px)' : '';
+    });
+  }
+
+  // ── Help dropdown ──────────────────────────────────────────────────────────
+  function toggleHelp() {
+    document.getElementById('help-dropdown').classList.toggle('open');
+  }
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('help-menu');
+    if (menu && !menu.contains(e.target)) {
+      document.getElementById('help-dropdown').classList.remove('open');
+    }
+  });
+
+  // ── Modals ─────────────────────────────────────────────────────────────────
+  function showModal(id) {
+    document.getElementById('help-dropdown').classList.remove('open');
+    document.getElementById(id).showModal();
+  }
+  function closeModal(id) { document.getElementById(id).close(); }
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('modal')) e.target.close();
+  });
   </script>
   {% block scripts %}{% endblock %}
 </body>

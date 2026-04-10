@@ -16,15 +16,23 @@
 .chip-bad { background: #f8d7da; color: #842029; }
 .chip-warn{ background: #fff3cd; color: #664d03; }
 
+/* Raw JWT section: flex wrapper keeps copy btn outside the scroll area */
+.token-wrap { margin-bottom: 14px; }
+.token-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; background: var(--surface2);
+  border: 1px solid var(--border); border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.token-head-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .token-box {
   font-family: var(--mono); font-size: 0.75rem;
   background: var(--surface2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px 14px;
-  word-break: break-all; white-space: pre-wrap; max-height: 140px;
-  overflow-y: auto; line-height: 1.7; margin-bottom: 14px;
-  position: relative;
+  border-radius: 0 0 var(--radius) var(--radius);
+  padding: 10px 12px;
+  word-break: break-all; white-space: pre-wrap; max-height: 130px;
+  overflow-y: auto; line-height: 1.7;
 }
-.token-copy-btn { position: absolute; top: 8px; right: 8px; }
 
 .cmp-val {
   font-family: var(--mono); font-size: 0.75rem;
@@ -40,11 +48,23 @@
 .section-head:first-child { margin-top: 0; }
 
 .btn-toggle-on { background: #eaedfd; color: var(--primary); border-color: #c5cdf9; }
+
+.timing-badge {
+  font-size: 0.75rem; color: var(--muted);
+  display: inline-flex; align-items: center; gap: 4px;
+}
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
   <span class="page-title">Claims for <em>{{ username }}</em></span>
+
+  {% if login_duration %}
+  <span class="timing-badge" title="Time from login redirect to callback completion">
+    &#9201; Login took {{ login_duration }}s
+  </span>
+  {% endif %}
+
   {% if expiry_info %}
     {% if expiry_info.expired %}
       <span class="expiry-chip chip-bad">&#9888; Token expired</span>
@@ -54,11 +74,18 @@
       </span>
     {% else %}
       <span class="expiry-chip chip-ok" id="expiry-chip">
-        &#10003; Valid &mdash; expires in <span id="countdown">{{ expiry_info.seconds_remaining }}s</span>
+        &#10003; Valid — expires in <span id="countdown">{{ expiry_info.seconds_remaining }}s</span>
       </span>
     {% endif %}
   {% endif %}
+
   <div style="flex:1"></div>
+
+  {% if has_refresh_token %}
+  <a href="{{ url_for('token_refresh') }}" class="btn btn-ghost btn-sm" title="Use the refresh token to get a new access token and re-render claims">
+    &#8635; Refresh token
+  </a>
+  {% endif %}
   <a href="{{ url_for('claims_json') }}" target="_blank" class="btn btn-ghost btn-sm">
     &#123;&#125; JSON export
   </a>
@@ -131,7 +158,8 @@
   <!-- ── Compare tab ── -->
   <div class="tab-panel" data-panel="compare" style="padding:0 20px 20px;">
     <p class="text-muted mt-2" style="font-size:0.8125rem;margin-bottom:14px;">
-      &#9888; = claim present in two sources with <em>different</em> values — worth investigating.
+      &#9888; = claim present in multiple sources with <em>different</em> values — worth investigating.
+      Sensitive values respect the mask toggle above.
     </p>
     <div class="table-wrap">
       <table>
@@ -168,6 +196,7 @@
               {% else %}<span class="compare-miss">—</span>{% endif %}
             </td>
             <td>
+              {# Pick first available value for preview; apply sensitive class for string values #}
               {% set val = row.id_val if row.id_val is not none else (row.access_val if row.access_val is not none else row.userinfo_val) %}
               {% if val is mapping %}
                 <details><summary>Object ({{ val | length }} keys)</summary>
@@ -176,7 +205,7 @@
               {% elif val is iterable and val is not string %}
                 <div class="tags">{% for i in val %}<span class="tag">{{ i }}</span>{% endfor %}</div>
               {% elif val is not none %}
-                <code class="cmp-val" title="{{ val | string }}">{{ val }}</code>
+                <code class="cmp-val {{ 'sensitive' if row.is_sensitive else '' }}" title="{{ val | string }}">{{ val }}</code>
               {% endif %}
             </td>
           </tr>
@@ -195,18 +224,22 @@
       Signature is <strong>not verified</strong> — this tool is for inspection only.
     </p>
 
+    {# Copy button is in the header row OUTSIDE the scrollable token-box so it always stays clickable #}
     {% macro raw_section(label, token_str) %}
     {% if token_str %}
-    <div class="section-head">{{ label }}</div>
-    <div class="token-box">
-      {% set parts = token_str.split('.') %}
-      {% if parts | length == 3 %}
-        <span class="jwt-header">{{ parts[0] }}</span><span class="jwt-dot">.</span><span class="jwt-payload">{{ parts[1] }}</span><span class="jwt-dot">.</span><span class="jwt-sig">{{ parts[2] }}</span>
-      {% else %}
-        {{ token_str }}
-      {% endif %}
-      <button class="btn btn-xs btn-ghost token-copy-btn"
-              onclick="copyText({{ token_str | tojson }})">&#x2398; Copy</button>
+    <div class="token-wrap">
+      <div class="token-head">
+        <span class="token-head-label">{{ label }}</span>
+        <button class="btn btn-xs btn-ghost" onclick="copyText({{ token_str | tojson }})">&#x2398; Copy</button>
+      </div>
+      <div class="token-box">
+        {% set parts = token_str.split('.') %}
+        {% if parts | length == 3 %}
+          <span style="color:#e63946">{{ parts[0] }}</span><span class="text-muted">.</span><span style="color:#4361ee">{{ parts[1] }}</span><span class="text-muted">.</span><span style="color:#6c757d">{{ parts[2] }}</span>
+        {% else %}
+          {{ token_str }}
+        {% endif %}
+      </div>
     </div>
     {% endif %}
     {% endmacro %}
@@ -231,7 +264,6 @@
 <script>
   initTabs('#main-tabs');
 
-  // Search — re-applies when switching tabs so the filter persists across tabs
   const searchInput = document.getElementById('claim-search');
   function applySearch() {
     const q = searchInput.value.toLowerCase();
@@ -244,13 +276,11 @@
     btn.addEventListener('click', () => { if (searchInput.value) setTimeout(applySearch, 10); });
   });
 
-  // Copy all claims as JSON by fetching the /claims.json endpoint
   async function copyAllJson() {
     const resp = await fetch('{{ url_for("claims_json") }}');
     copyText(await resp.text());
   }
 
-  // Expiry countdown
   {% if expiry_info and not expiry_info.expired %}
   (function() {
     let secs = {{ expiry_info.seconds_remaining }};
