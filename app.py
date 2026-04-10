@@ -31,6 +31,10 @@ OIDC_DISCOVERY_URL = os.environ.get('OIDC_DISCOVERY_URL', '')
 OIDC_CLIENT_ID = os.environ.get('OIDC_CLIENT_ID', '')
 OIDC_CLIENT_SECRET = os.environ.get('OIDC_CLIENT_SECRET', '')
 OIDC_SCOPE = os.environ.get('OIDC_SCOPE', 'openid email profile')
+# PKCE: 'S256' (default, required by Kanidm and recommended), 'plain', or 'disabled'
+OIDC_PKCE_METHOD = os.environ.get('OIDC_PKCE_METHOD', 'S256').strip()
+# Token signing algorithm to enforce, e.g. 'ES256' or 'RS256'. Empty = accept whatever the server sends.
+OIDC_TOKEN_SIGNING_ALG = os.environ.get('OIDC_TOKEN_SIGNING_ALG', '').strip()
 
 TIMESTAMP_CLAIMS = frozenset({'exp', 'iat', 'nbf', 'auth_time', 'updated_at'})
 SENSITIVE_CLAIMS = frozenset({
@@ -93,12 +97,15 @@ CLAIM_DESCRIPTIONS = {
 
 oauth = OAuth(app)
 if OIDC_DISCOVERY_URL and OIDC_CLIENT_ID:
+    _client_kwargs = {'scope': OIDC_SCOPE}
+    if OIDC_PKCE_METHOD != 'disabled':
+        _client_kwargs['code_challenge_method'] = OIDC_PKCE_METHOD
     oauth.register(
         name='oidc',
         server_metadata_url=OIDC_DISCOVERY_URL,
         client_id=OIDC_CLIENT_ID,
         client_secret=OIDC_CLIENT_SECRET,
-        client_kwargs={'scope': OIDC_SCOPE},
+        client_kwargs=_client_kwargs,
     )
 
 
@@ -202,6 +209,8 @@ def index():
             'discovery_url': OIDC_DISCOVERY_URL,
             'client_id': OIDC_CLIENT_ID,
             'scope': OIDC_SCOPE,
+            'pkce_method': OIDC_PKCE_METHOD,
+            'token_signing_alg': OIDC_TOKEN_SIGNING_ALG or 'auto (from server)',
             'configured': bool(OIDC_DISCOVERY_URL and OIDC_CLIENT_ID),
         },
     )
@@ -217,7 +226,10 @@ def login():
 
 @app.route('/callback')
 def auth_callback():
-    token = oauth.oidc.authorize_access_token()
+    claims_options = {}
+    if OIDC_TOKEN_SIGNING_ALG:
+        claims_options['alg'] = {'values': [OIDC_TOKEN_SIGNING_ALG]}
+    token = oauth.oidc.authorize_access_token(**({"claims_options": claims_options} if claims_options else {}))
     session['raw_tokens'] = {
         'access_token': token.get('access_token'),
         'id_token': token.get('id_token'),

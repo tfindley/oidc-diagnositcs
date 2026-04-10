@@ -83,6 +83,24 @@
         <span class="config-val">{{ config.scope or '—' }}</span>
       </div>
       <div class="config-row">
+        <span class="config-label">PKCE</span>
+        <span class="config-val">
+          {% if config.pkce_method == 'disabled' %}
+            <span class="badge badge-yellow">disabled</span>
+          {% else %}
+            <span class="badge badge-green">{{ config.pkce_method }}</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="config-row">
+        <span class="config-label">Token signing alg</span>
+        <span class="config-val">
+          <span class="badge {% if config.token_signing_alg == 'RS256' %}badge-yellow{% else %}badge-blue{% endif %}">
+            {{ config.token_signing_alg }}
+          </span>
+        </span>
+      </div>
+      <div class="config-row">
         <span class="config-label">Callback URL</span>
         <span class="config-val">{{ request.host_url }}callback</span>
       </div>
