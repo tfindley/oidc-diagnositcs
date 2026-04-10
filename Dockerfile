@@ -5,6 +5,16 @@ WORKDIR /app
 # Create a non-root user with a home directory (required by gunicorn's control server)
 RUN groupadd --system app && useradd --system --gid app --create-home app
 
+# Apply OS security patches and remove packages not needed at runtime.
+# ncurses-bin contains the infocmp CLI tool (CVE-2025-69720) which has no
+# purpose in a web container; the ncurses libraries remain for Python's use.
+# tar and apt are build-time-only tools that increase attack surface at runtime.
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && apt-get remove --purge -y ncurses-bin tar \
+ && apt-get autoremove -y \
+ && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first (layer-cached independently of app code)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
