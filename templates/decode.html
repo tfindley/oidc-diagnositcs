@@ -27,8 +27,10 @@
 .history-item:hover { background: var(--bg); }
 .history-item .h-label { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-item .h-meta  { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
-.history-item .h-del   { color: var(--muted); font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; }
+.history-item .h-del    { color: var(--muted); font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; }
 .history-item .h-del:hover { background: var(--bg); color: var(--red); }
+.history-item .h-slot  { color: var(--muted); font-size: 0.7rem; padding: 2px 5px; border-radius: 4px; }
+.history-item .h-slot:hover { background: var(--bg); color: var(--primary); }
 
 /* Token timeline */
 .timeline-wrap { margin: 16px 0 4px; }
@@ -118,7 +120,10 @@
       </form>
       {# History list — populated by JS from localStorage #}
       <div id="history-wrap" style="display:none;padding-top:12px;border-top:1px solid var(--border);margin-top:14px;">
-        <div style="font-size:0.75rem;color:var(--muted);font-weight:600;margin-bottom:4px;">Recently decoded</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-size:0.75rem;color:var(--muted);font-weight:600;">Recently decoded</span>
+          <button class="btn btn-ghost btn-xs" onclick="histClear()" style="font-size:0.7rem;padding:2px 6px;">Clear all</button>
+        </div>
         <ul class="history-list" id="history-list"></ul>
       </div>
     </div>
@@ -371,26 +376,42 @@
   function histSave(items) {
     try { localStorage.setItem(HIST_KEY, JSON.stringify(items)); } catch {}
   }
+  function detectTokenType(header, payload) {
+    const typ = (header.typ || '').toLowerCase();
+    if (typ === 'refresh' || payload.token_use === 'refresh') return 'Refresh';
+    if (typ === 'at+jwt' || payload.token_use === 'access' || payload.token_type === 'Bearer') return 'Access';
+    if (payload.at_hash || payload.nonce || payload.auth_time !== undefined || payload.token_use === 'id') return 'ID';
+    if (payload.scope) return 'Access';
+    return null;
+  }
+
   function histAdd(token) {
     if (!token) return;
     let items = histLoad().filter(i => i.token !== token);
     let label = token.substring(0, 12) + '…';
+    let type = null;
     const _d = jwtDecode(token);
     if (_d) {
       const p = _d.payload;
+      type = detectTokenType(_d.header, p);
       label = p.sub || p.email || p.preferred_username || p.iss || label;
-      // Append expiry so tokens from the same user are distinguishable
       if (p.exp) {
         const d = new Date(p.exp * 1000);
         label += ' · exp ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
       }
     }
-    items.unshift({ token, label, ts: Date.now() });
+    items.unshift({ token, label, type, exp: (_d && _d.payload.exp) || null, ts: Date.now() });
     histSave(items.slice(0, HIST_MAX));
     histRender();
   }
-  function histDelete(token) {
-    histSave(histLoad().filter(i => i.token !== token));
+  function histDelete(idx) {
+    const items = histLoad();
+    items.splice(idx, 1);
+    histSave(items);
+    histRender();
+  }
+  function histClear() {
+    histSave([]);
     histRender();
   }
   const CURRENT_TOKEN = {{ token_input | tojson if token_input else 'null' }};
@@ -402,15 +423,27 @@
     if (!wrap || !list) return;
     if (!items.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
+    const TYPE_BADGE = { 'ID': 'badge-blue', 'Access': 'badge-green', 'Refresh': 'badge-yellow' };
+    const nowSec = Math.floor(Date.now() / 1000);
     list.innerHTML = items.map((item, idx) => {
       const age = Math.round((Date.now() - item.ts) / 60000);
       const ageStr = age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
       const isCurrent = item.token === CURRENT_TOKEN;
+      const typeBadge = item.type ? `<span class="badge ${TYPE_BADGE[item.type] || 'badge-gray'}" style="font-size:0.65rem;padding:1px 5px;margin-right:2px;">${item.type}</span>` : '';
+      let expiryChip = '';
+      if (item.exp) {
+        const secsLeft = item.exp - nowSec;
+        if (secsLeft < 0)    expiryChip = '<span class="chip chip-bad"  style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">expired</span>';
+        else if (secsLeft < 300) expiryChip = '<span class="chip chip-warn" style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">exp soon</span>';
+        else                 expiryChip = '<span class="chip chip-ok"   style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">valid</span>';
+      }
       return `<li class="history-item${isCurrent ? ' h-current' : ''}" title="${item.token.substring(0,40)}…">
         <span class="h-label" ${isCurrent ? '' : `onclick="histUse(${idx})"`}
-              style="${isCurrent ? 'cursor:default;opacity:0.6;' : ''}">${item.label}</span>
+              style="${isCurrent ? 'cursor:default;opacity:0.6;' : ''}">${typeBadge}${item.label}${expiryChip}</span>
         ${isCurrent ? '<span class="h-meta" style="color:var(--primary);font-weight:600;">current</span>' : `<span class="h-meta">${ageStr}</span>`}
-        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${JSON.stringify(item.token)})" title="Remove">&#10005;</button>
+        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'a')" title="Load into Token A">→ A</button>
+        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'b')" title="Load into Token B">→ B</button>
+        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${idx})" title="Remove">&#10005;</button>
       </li>`;
     }).join('');
   }
@@ -419,6 +452,16 @@
     if (!item || item.token === CURRENT_TOKEN) return;
     document.querySelector('textarea[name=token]').value = item.token;
     document.querySelector('form').submit();
+  }
+  function histToSlot(idx, slot) {
+    const item = histLoad()[idx];
+    if (!item) return;
+    const el = document.getElementById('diff-' + slot);
+    if (!el) return;
+    el.value = item.token;
+    const section = document.getElementById('diff-section');
+    if (section && !section.open) section.open = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   // Save current token to history if results are shown
@@ -433,7 +476,6 @@
     const iat = {{ decoded.payload.get('iat') | int }};
     const exp = {{ decoded.payload.get('exp') | int }};
     {% if decoded.payload.get('nbf') %}const nbf = {{ decoded.payload.get('nbf') | int }};{% else %}const nbf = null;{% endif %}
-    const now = Math.floor(Date.now() / 1000);
     const span = exp - iat;
     if (span <= 0) return;
 
@@ -444,22 +486,32 @@
     const nowLbl  = document.getElementById('tl-now-label');
     const nbfBar  = document.getElementById('tl-nbf');
 
-    if (elapsed) elapsed.style.width = pct(now) + '%';
-    if (nowBar)  nowBar.style.left   = pct(now) + '%';
     if (nbfBar && nbf) nbfBar.style.left = pct(nbf) + '%';
-    if (nowLbl) {
-      const secs = exp - now;
-      if (secs > 0) {
-        nowLbl.textContent = secs >= 3600
-          ? `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m remaining`
-          : secs >= 60 ? `${Math.floor(secs/60)}m ${secs%60}s remaining`
-          : `${secs}s remaining`;
-      } else {
-        nowLbl.textContent = `expired ${-secs}s ago`;
-        if (elapsed) elapsed.style.background = 'var(--red)';
-        if (nowBar)  nowBar.style.background  = 'var(--red)';
+
+    let timer;
+    function tick() {
+      const now = Math.floor(Date.now() / 1000);
+      if (elapsed) elapsed.style.width = pct(now) + '%';
+      if (nowBar)  nowBar.style.left   = pct(now) + '%';
+      if (nowLbl) {
+        const secs = exp - now;
+        if (secs > 0) {
+          nowLbl.textContent = secs >= 3600
+            ? `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m remaining`
+            : secs >= 60 ? `${Math.floor(secs/60)}m ${secs%60}s remaining`
+            : `${secs}s remaining`;
+          if (elapsed) elapsed.style.background = '';
+          if (nowBar)  nowBar.style.background  = '';
+        } else {
+          nowLbl.textContent = `expired ${Math.abs(secs)}s ago`;
+          if (elapsed) elapsed.style.background = 'var(--red)';
+          if (nowBar)  nowBar.style.background  = 'var(--red)';
+          clearInterval(timer);
+        }
       }
     }
+    tick();
+    timer = setInterval(tick, 1000);
   })();
   {% endif %}
 
