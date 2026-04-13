@@ -4,8 +4,9 @@ import os
 import secrets
 import time
 import yaml
+from collections import Counter
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import requests as http_requests
 from authlib.integrations.flask_client import OAuth
@@ -616,6 +617,7 @@ def decode_tool():
         token_input=token_input,
         decoded=decoded,
         claims_list=claims_list,
+        now=int(time.time()),
     )
 
 
@@ -641,6 +643,277 @@ def logout():
             pass  # Fall through to local-only logout
 
     return redirect(url_for('index'))
+
+
+# ── Conformance checks ────────────────────────────────────────────────────────
+
+def _is_localhost(url: str) -> bool:
+    h = (urlparse(url).hostname or '').lower()
+    return h in ('localhost', '127.0.0.1', '::1') or h.endswith('.local')
+
+
+def run_conformance_checks(provider_id: str) -> dict:
+    """Run OIDC conformance and security checks for a provider.
+    Returns a dict with keys: provider, checks, counts, latency_ms, error (optional)."""
+    provider = _get_provider(provider_id)
+    if not provider:
+        return {'error': 'Provider not found', 'checks': [], 'counts': {}}
+    discovery_url = provider.get('discovery_url', '')
+    if not discovery_url:
+        return {'error': 'No discovery URL configured', 'checks': [], 'counts': {}}
+
+    try:
+        t0 = time.time()
+        resp = http_requests.get(discovery_url, timeout=10)
+        resp.raise_for_status()
+        meta = resp.json()
+        latency_ms = int((time.time() - t0) * 1000)
+    except Exception as exc:
+        return {'error': f'Could not fetch discovery document: {exc}', 'checks': [], 'counts': {}}
+
+    checks = []
+
+    def add(category, name, status, detail, ref=''):
+        checks.append({'category': category, 'name': name, 'status': status,
+                       'detail': detail, 'ref': ref})
+
+    # ── Discovery document required/recommended fields (OIDC Core 1.0 §4) ──────
+    CAT = 'Discovery Document'
+    for field, label, required in [
+        ('issuer',                                'Issuer',                               True),
+        ('authorization_endpoint',                'Authorization endpoint',                True),
+        ('token_endpoint',                        'Token endpoint',                        True),
+        ('jwks_uri',                              'JWKS URI',                              True),
+        ('response_types_supported',              'Response types supported',              True),
+        ('subject_types_supported',               'Subject types supported',               True),
+        ('id_token_signing_alg_values_supported', 'ID token signing algorithms',           True),
+        ('userinfo_endpoint',                     'UserInfo endpoint',                     False),
+        ('scopes_supported',                      'Scopes supported',                      False),
+        ('claims_supported',                      'Claims supported',                      False),
+        ('token_endpoint_auth_methods_supported', 'Token endpoint auth methods supported', False),
+    ]:
+        level = 'REQUIRED' if required else 'RECOMMENDED'
+        ref   = f'OIDC Core 1.0 §4 ({level})'
+        if meta.get(field):
+            add(CAT, f'{label} present', 'pass',
+                f'`{field}` is present in the discovery document.', ref)
+        else:
+            add(CAT, f'{label} present', 'fail' if required else 'warn',
+                f'`{field}` is {level} by OIDC Core but is missing.', ref)
+
+    # ── Security: HTTPS endpoints ──────────────────────────────────────────────
+    CAT = 'Security'
+    for field, label, critical in [
+        ('issuer',                 'Issuer',                True),
+        ('authorization_endpoint', 'Authorization endpoint', True),
+        ('token_endpoint',         'Token endpoint',         True),
+        ('jwks_uri',               'JWKS URI',               True),
+        ('userinfo_endpoint',      'UserInfo endpoint',      False),
+        ('end_session_endpoint',   'End session endpoint',   False),
+    ]:
+        url = meta.get(field, '')
+        if not url:
+            continue
+        if url.startswith('https://'):
+            add(CAT, f'{label} uses HTTPS', 'pass',
+                f'{label} is served over HTTPS.', 'RFC 6749 §10.9')
+        elif _is_localhost(url):
+            add(CAT, f'{label} uses HTTPS', 'info',
+                f'{label} is on localhost — HTTP is acceptable for local development only.',
+                'RFC 6749 §10.9')
+        else:
+            add(CAT, f'{label} uses HTTPS', 'fail' if critical else 'warn',
+                f'{label} is not HTTPS (`{url}`). Tokens could be intercepted in transit.',
+                'RFC 6749 §10.9')
+
+    # ── Security: ID token signing algorithms ──────────────────────────────────
+    algs = meta.get('id_token_signing_alg_values_supported', [])
+    if 'none' in algs:
+        add(CAT, 'Unsigned tokens (`none`) not advertised', 'fail',
+            'The `none` algorithm is listed in `id_token_signing_alg_values_supported`. '
+            'This permits completely unsigned tokens — a critical security risk.',
+            'RFC 8725 §2.1')
+    elif algs:
+        add(CAT, 'Unsigned tokens (`none`) not advertised', 'pass',
+            'The `none` algorithm is not advertised — unsigned tokens will be rejected.',
+            'RFC 8725 §2.1')
+
+    hmac_algs = [a for a in algs if a.startswith('HS')]
+    if hmac_algs:
+        add(CAT, 'No symmetric HMAC algorithms for ID tokens', 'warn',
+            f'Symmetric HMAC algorithms ({", ".join(hmac_algs)}) are listed. '
+            'These require the client secret to be shared for token verification and '
+            'are inappropriate for most deployments.',
+            'RFC 8725 §2.7')
+    elif algs:
+        add(CAT, 'No symmetric HMAC algorithms for ID tokens', 'pass',
+            'No symmetric HMAC algorithms advertised for ID token signing.',
+            'RFC 8725 §2.7')
+
+    ec_algs = [a for a in algs if a.startswith('ES')]
+    ps_algs = [a for a in algs if a.startswith('PS')]
+    rs_algs = [a for a in algs if a.startswith('RS')]
+    if ec_algs or ps_algs:
+        preferred = ec_algs + ps_algs
+        add(CAT, 'Modern asymmetric algorithm available', 'pass',
+            f'EC or RSA-PSS algorithms supported: {", ".join(preferred)}. '
+            'These are preferred over RSA PKCS#1 v1.5 (RS256).',
+            'RFC 8725 §3.2')
+    elif rs_algs:
+        add(CAT, 'Modern asymmetric algorithm available', 'warn',
+            f'Only RSA PKCS#1 v1.5 ({", ".join(rs_algs)}) is available. '
+            'Consider enabling ES256 or PS256.',
+            'RFC 8725 §3.2')
+    elif algs:
+        add(CAT, 'Modern asymmetric algorithm available', 'fail',
+            f'Unrecognised algorithms only: {", ".join(algs)}.', 'RFC 8725 §3.2')
+
+    # ── Security: PKCE ─────────────────────────────────────────────────────────
+    pkce = meta.get('code_challenge_methods_supported', [])
+    if 'S256' in pkce:
+        add(CAT, 'PKCE S256 supported', 'pass',
+            'S256 PKCE is supported — authorization codes are protected against interception.',
+            'RFC 7636, RFC 9700 §7.5.2')
+    elif pkce:
+        add(CAT, 'PKCE S256 supported', 'warn',
+            f'PKCE supported but only with: {", ".join(pkce)}. S256 is required; plain is insecure.',
+            'RFC 7636 §4.2')
+    else:
+        add(CAT, 'PKCE S256 supported', 'warn',
+            'PKCE code challenge methods are not advertised. Public clients may be vulnerable '
+            'to authorization code interception.',
+            'RFC 7636, RFC 9700 §7.5.2')
+
+    if pkce and 'plain' in pkce:
+        add(CAT, '`plain` PKCE method not advertised', 'warn',
+            'The `plain` code challenge method is advertised. This provides no hashing of the '
+            'code verifier and offers less protection than S256.',
+            'RFC 7636 §4.2')
+    elif pkce:
+        add(CAT, '`plain` PKCE method not advertised', 'pass',
+            'The insecure `plain` PKCE method is not advertised.')
+
+    # ── Optional features ──────────────────────────────────────────────────────
+    CAT = 'Optional Features'
+    for field, label, ok_detail, info_detail, ref in [
+        ('end_session_endpoint', 'RP-initiated logout (end_session_endpoint)',
+         'Users can be signed out at the IdP level when they sign out of this application.',
+         'No `end_session_endpoint` — local session cleared on sign-out but the IdP session remains active.',
+         'OIDC RP-Initiated Logout 1.0'),
+        ('backchannel_logout_supported', 'Back-channel logout',
+         'Server-to-server logout notifications are supported.',
+         'Back-channel logout not advertised — users will not be automatically signed out if '
+         'their IdP session ends externally.',
+         'OIDC Back-Channel Logout 1.0'),
+        ('claims_parameter_supported', 'Claims request parameter',
+         'The `claims` parameter is supported — clients can request specific claims per-request.',
+         'Not advertised — clients cannot fine-tune which claims are returned per-request.',
+         'OIDC Core 1.0 §5.5'),
+        ('request_parameter_supported', 'Signed request objects (JAR)',
+         'Signed request objects are supported for tamper-proof authorization requests.',
+         'Not advertised.',
+         'RFC 9101'),
+    ]:
+        if meta.get(field):
+            add(CAT, label, 'pass', ok_detail, ref)
+        else:
+            add(CAT, label, 'info', info_detail, ref)
+
+    # ── Token validation (current session for this provider) ──────────────────
+    CAT = 'Token Validation'
+    if session.get('provider_id') != provider_id:
+        add(CAT, 'Session available for validation', 'skip',
+            'Not signed in to this provider — sign in to validate actual token claims.')
+    else:
+        raw_tokens = session.get('raw_tokens', {})
+        tok = decode_jwt(raw_tokens.get('id_token', ''))
+
+        if tok.get('error'):
+            add(CAT, 'ID token decodable', 'warn', f'Could not decode ID token: {tok["error"]}')
+        else:
+            payload = tok.get('payload', {})
+            header  = tok.get('header',  {})
+            add(CAT, 'ID token decodable', 'pass',
+                'ID token is a structurally valid JWT (header.payload.signature).')
+
+            for claim in ('sub', 'iss', 'aud', 'exp', 'iat'):
+                if claim in payload:
+                    add(CAT, f'`{claim}` claim present', 'pass',
+                        f'ID token contains the required `{claim}` claim.', 'OIDC Core §2')
+                else:
+                    add(CAT, f'`{claim}` claim present', 'fail',
+                        f'Required `{claim}` claim is missing from the ID token.', 'OIDC Core §2')
+
+            token_iss = payload.get('iss', '')
+            expected_iss = meta.get('issuer', '')
+            if token_iss and expected_iss:
+                if token_iss == expected_iss:
+                    add(CAT, 'Issuer matches discovery document', 'pass',
+                        f'Token `iss` matches: `{token_iss}`.', 'OIDC Core §3.1.3.7')
+                else:
+                    add(CAT, 'Issuer matches discovery document', 'fail',
+                        f'Token `iss` (`{token_iss}`) ≠ discovery issuer (`{expected_iss}`). '
+                        'This token must be rejected.', 'OIDC Core §3.1.3.7')
+
+            client_id = provider.get('client_id', '')
+            aud = payload.get('aud')
+            if aud is not None and client_id:
+                aud_list = [aud] if isinstance(aud, str) else list(aud)
+                if client_id in aud_list:
+                    add(CAT, 'Audience contains client ID', 'pass',
+                        'Token `aud` includes the configured client ID.',
+                        'OIDC Core §3.1.3.7')
+                else:
+                    add(CAT, 'Audience contains client ID', 'fail',
+                        f'Token `aud` (`{aud}`) does not contain client ID `{client_id}`. '
+                        'This token was not issued for this application.',
+                        'OIDC Core §3.1.3.7')
+
+            now_ts = int(time.time())
+            exp = payload.get('exp')
+            if exp:
+                if exp > now_ts:
+                    add(CAT, 'Token not expired', 'pass',
+                        f'Expires in {exp - now_ts}s '
+                        f'({datetime.fromtimestamp(exp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}).',
+                        'OIDC Core §2')
+                else:
+                    add(CAT, 'Token not expired', 'fail',
+                        f'Expired {now_ts - exp}s ago '
+                        f'({datetime.fromtimestamp(exp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}).',
+                        'OIDC Core §2')
+
+            token_alg = header.get('alg', '')
+            if token_alg == 'none':
+                add(CAT, 'ID token signing algorithm', 'fail',
+                    'ID token header has `alg: none` — this token is unsigned.',
+                    'RFC 8725 §2.1')
+            elif token_alg.startswith('HS'):
+                add(CAT, 'ID token signing algorithm', 'warn',
+                    f'ID token is signed with symmetric HMAC ({token_alg}).',
+                    'RFC 8725 §2.7')
+            elif token_alg:
+                add(CAT, 'ID token signing algorithm', 'pass',
+                    f'ID token is signed with `{token_alg}`.')
+
+    counts = dict(Counter(c['status'] for c in checks))
+
+    return {'provider': provider, 'checks': checks, 'counts': counts, 'latency_ms': latency_ms}
+
+
+@app.route('/conformance')
+def conformance():
+    """OIDC conformance and security analysis page."""
+    provider_id = request.args.get('provider') or (PROVIDERS[0]['id'] if PROVIDERS else None)
+    result = None
+    if provider_id and 'run' in request.args:
+        result = run_conformance_checks(provider_id)
+    return render_template('conformance.html',
+        providers=PROVIDERS,
+        multi_provider=MULTI_PROVIDER,
+        provider_id=provider_id,
+        result=result,
+    )
 
 
 # ── API endpoints ─────────────────────────────────────────────────────────────
