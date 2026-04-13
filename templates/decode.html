@@ -376,7 +376,15 @@
     let items = histLoad().filter(i => i.token !== token);
     let label = token.substring(0, 12) + '…';
     const _d = jwtDecode(token);
-    if (_d) { label = _d.payload.sub || _d.payload.email || _d.payload.preferred_username || _d.payload.iss || label; }
+    if (_d) {
+      const p = _d.payload;
+      label = p.sub || p.email || p.preferred_username || p.iss || label;
+      // Append expiry so tokens from the same user are distinguishable
+      if (p.exp) {
+        const d = new Date(p.exp * 1000);
+        label += ' · exp ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+      }
+    }
     items.unshift({ token, label, ts: Date.now() });
     histSave(items.slice(0, HIST_MAX));
     histRender();
@@ -385,6 +393,8 @@
     histSave(histLoad().filter(i => i.token !== token));
     histRender();
   }
+  const CURRENT_TOKEN = {{ token_input | tojson if token_input else 'null' }};
+
   function histRender() {
     const items = histLoad();
     const wrap = document.getElementById('history-wrap');
@@ -395,16 +405,18 @@
     list.innerHTML = items.map((item, idx) => {
       const age = Math.round((Date.now() - item.ts) / 60000);
       const ageStr = age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
-      return `<li class="history-item" title="${item.token.substring(0,40)}…">
-        <span class="h-label" onclick="histUse(${idx})">${item.label}</span>
-        <span class="h-meta">${ageStr}</span>
+      const isCurrent = item.token === CURRENT_TOKEN;
+      return `<li class="history-item${isCurrent ? ' h-current' : ''}" title="${item.token.substring(0,40)}…">
+        <span class="h-label" ${isCurrent ? '' : `onclick="histUse(${idx})"`}
+              style="${isCurrent ? 'cursor:default;opacity:0.6;' : ''}">${item.label}</span>
+        ${isCurrent ? '<span class="h-meta" style="color:var(--primary);font-weight:600;">current</span>' : `<span class="h-meta">${ageStr}</span>`}
         <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${JSON.stringify(item.token)})" title="Remove">&#10005;</button>
       </li>`;
     }).join('');
   }
   function histUse(idx) {
     const item = histLoad()[idx];
-    if (!item) return;
+    if (!item || item.token === CURRENT_TOKEN) return;
     document.querySelector('textarea[name=token]').value = item.token;
     document.querySelector('form').submit();
   }
