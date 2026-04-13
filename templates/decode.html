@@ -16,6 +16,48 @@
 .jwt-visual { word-break: break-all; line-height: 1.9; }
 .btn-toggle-on { background: #eaedfd; color: var(--primary); border-color: #c5cdf9; }
 
+/* History */
+.history-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.history-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface2);
+  font-size: 0.8125rem; transition: background .1s;
+}
+.history-item:hover { background: var(--bg); }
+.history-item .h-label { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-item .h-meta  { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.history-item .h-del   { color: var(--muted); font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; }
+.history-item .h-del:hover { background: var(--bg); color: var(--red); }
+
+/* Token timeline */
+.timeline-wrap { margin: 16px 0 4px; }
+.timeline-bar {
+  position: relative; height: 10px; border-radius: 5px;
+  background: var(--surface2); border: 1px solid var(--border); overflow: visible;
+}
+.timeline-valid   { position: absolute; top: 0; height: 100%; background: var(--green); opacity: .35; border-radius: 5px 0 0 5px; }
+.timeline-elapsed { position: absolute; top: 0; height: 100%; background: var(--primary); opacity: .5; border-radius: 5px 0 0 5px; }
+.timeline-now {
+  position: absolute; top: -4px; width: 3px; height: 18px;
+  background: var(--primary); border-radius: 2px; transform: translateX(-50%);
+}
+.timeline-nbf {
+  position: absolute; top: -3px; width: 2px; height: 16px;
+  background: var(--yellow); opacity: .8; transform: translateX(-50%);
+}
+.timeline-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+.timeline-legend { display: flex; gap: 12px; font-size: 0.7rem; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.timeline-legend span { display: flex; align-items: center; gap: 4px; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* Token diff */
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+@media (max-width: 640px) { .diff-grid { grid-template-columns: 1fr; } }
+.diff-only-a { background: #fff0f0; }
+.diff-only-b { background: #f0f8ff; }
+.diff-changed { background: #fffbeb; }
+
 /* Help section */
 .help-toggle { margin-bottom: 20px; }
 .help-toggle summary {
@@ -74,6 +116,11 @@
           <button type="button" class="btn btn-ghost" id="paste-btn">&#x2398; Paste from clipboard</button>
         </div>
       </form>
+      {# History list — populated by JS from localStorage #}
+      <div id="history-wrap" style="display:none;padding-top:12px;border-top:1px solid var(--border);margin-top:14px;">
+        <div style="font-size:0.75rem;color:var(--muted);font-weight:600;margin-bottom:4px;">Recently decoded</div>
+        <ul class="history-list" id="history-list"></ul>
+      </div>
     </div>
   </div>
 
@@ -143,8 +190,37 @@
     </div>
   </details>
 
+  {# ── Compare two tokens ── #}
+  <details class="help-toggle" style="margin-bottom:20px;" id="diff-section">
+    <summary>Compare two tokens</summary>
+    <div class="diff-grid" style="margin-top:12px;">
+      <div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token A</div>
+        <textarea id="diff-a" class="token-textarea" style="min-height:80px;"
+                  placeholder="Paste first JWT…">{% if token_input %}{{ token_input }}{% endif %}</textarea>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token B</div>
+        <textarea id="diff-b" class="token-textarea" style="min-height:80px;"
+                  placeholder="Paste second JWT…"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="runDiff()">Compare</button>
+    <div id="diff-results" style="margin-top:14px;"></div>
+  </details>
+
   {% if token_input %}
     {% if decoded and not decoded.error %}
+
+    {# Expiry warning #}
+    {% set exp_val = decoded.payload.get('exp') %}
+    {% if exp_val and exp_val < now %}
+    <div class="alert alert-warning" style="margin-bottom:16px;">
+      &#9888; This token <strong>expired</strong>
+      {{ now - exp_val }} second{{ 's' if now - exp_val != 1 else '' }} ago
+      (exp: {{ exp_val }}).
+    </div>
+    {% endif %}
 
     <!-- Visual JWT with coloured parts -->
     <div class="card" style="margin-bottom:16px;">
@@ -161,6 +237,32 @@
         </div>
       </div>
     </div>
+
+    {# Token timeline (rendered by JS using iat/nbf/exp from payload) #}
+    {% if decoded.payload.get('iat') and decoded.payload.get('exp') %}
+    <div class="card" style="margin-bottom:16px;" id="timeline-card">
+      <div class="card-header"><span class="card-title">Token Lifetime</span></div>
+      <div class="card-body" style="padding:16px 20px;">
+        <div class="timeline-wrap">
+          <div class="timeline-bar" id="tl-bar">
+            <div class="timeline-elapsed" id="tl-elapsed"></div>
+            {% if decoded.payload.get('nbf') %}<div class="timeline-nbf" id="tl-nbf"></div>{% endif %}
+            <div class="timeline-now" id="tl-now"></div>
+          </div>
+          <div class="timeline-labels">
+            <span>iat {{ decoded.payload.get('iat') | int }}</span>
+            <span id="tl-now-label"></span>
+            <span>exp {{ decoded.payload.get('exp') | int }}</span>
+          </div>
+        </div>
+        <div class="timeline-legend">
+          <span><span class="tl-dot" style="background:var(--primary);opacity:.5;"></span> elapsed</span>
+          {% if decoded.payload.get('nbf') %}<span><span class="tl-dot" style="background:var(--yellow);"></span> nbf</span>{% endif %}
+          <span><span class="tl-dot" style="background:var(--primary);"></span> now</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Header -->
     <div class="card" style="margin-bottom:16px;">
@@ -239,6 +341,7 @@
 
 {% block scripts %}
 <script>
+  // ── Paste button ────────────────────────────────────────────────────────────
   document.getElementById('paste-btn').addEventListener('click', async () => {
     try {
       document.querySelector('textarea[name=token]').value = await navigator.clipboard.readText();
@@ -247,6 +350,7 @@
     }
   });
 
+  // ── Claim search ────────────────────────────────────────────────────────────
   const ds = document.getElementById('decode-search');
   if (ds) {
     ds.addEventListener('input', function() {
@@ -255,6 +359,151 @@
         row.style.display = (row.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
       });
     });
+  }
+
+  // ── History (localStorage) ──────────────────────────────────────────────────
+  const HIST_KEY = 'oidc_decode_history';
+  const HIST_MAX = 5;
+
+  function histLoad() {
+    try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
+  }
+  function histSave(items) {
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(items)); } catch {}
+  }
+  function histAdd(token) {
+    if (!token) return;
+    let items = histLoad().filter(i => i.token !== token);
+    let label = token.substring(0, 12) + '…';
+    const _d = jwtDecode(token);
+    if (_d) { label = _d.payload.sub || _d.payload.email || _d.payload.preferred_username || _d.payload.iss || label; }
+    items.unshift({ token, label, ts: Date.now() });
+    histSave(items.slice(0, HIST_MAX));
+    histRender();
+  }
+  function histDelete(token) {
+    histSave(histLoad().filter(i => i.token !== token));
+    histRender();
+  }
+  function histRender() {
+    const items = histLoad();
+    const wrap = document.getElementById('history-wrap');
+    const list = document.getElementById('history-list');
+    if (!wrap || !list) return;
+    if (!items.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
+    list.innerHTML = items.map((item, idx) => {
+      const age = Math.round((Date.now() - item.ts) / 60000);
+      const ageStr = age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
+      return `<li class="history-item" title="${item.token.substring(0,40)}…">
+        <span class="h-label" onclick="histUse(${idx})">${item.label}</span>
+        <span class="h-meta">${ageStr}</span>
+        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${JSON.stringify(item.token)})" title="Remove">&#10005;</button>
+      </li>`;
+    }).join('');
+  }
+  function histUse(idx) {
+    const item = histLoad()[idx];
+    if (!item) return;
+    document.querySelector('textarea[name=token]').value = item.token;
+    document.querySelector('form').submit();
+  }
+
+  // Save current token to history if results are shown
+  {% if token_input and decoded and not decoded.error %}
+  histAdd({{ token_input | tojson }});
+  {% endif %}
+  histRender();
+
+  // ── Token timeline ──────────────────────────────────────────────────────────
+  {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}
+  (function() {
+    const iat = {{ decoded.payload.get('iat') | int }};
+    const exp = {{ decoded.payload.get('exp') | int }};
+    {% if decoded.payload.get('nbf') %}const nbf = {{ decoded.payload.get('nbf') | int }};{% else %}const nbf = null;{% endif %}
+    const now = Math.floor(Date.now() / 1000);
+    const span = exp - iat;
+    if (span <= 0) return;
+
+    function pct(t) { return Math.max(0, Math.min(100, (t - iat) / span * 100)); }
+
+    const elapsed = document.getElementById('tl-elapsed');
+    const nowBar  = document.getElementById('tl-now');
+    const nowLbl  = document.getElementById('tl-now-label');
+    const nbfBar  = document.getElementById('tl-nbf');
+
+    if (elapsed) elapsed.style.width = pct(now) + '%';
+    if (nowBar)  nowBar.style.left   = pct(now) + '%';
+    if (nbfBar && nbf) nbfBar.style.left = pct(nbf) + '%';
+    if (nowLbl) {
+      const secs = exp - now;
+      if (secs > 0) {
+        nowLbl.textContent = secs >= 3600
+          ? `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m remaining`
+          : secs >= 60 ? `${Math.floor(secs/60)}m ${secs%60}s remaining`
+          : `${secs}s remaining`;
+      } else {
+        nowLbl.textContent = `expired ${-secs}s ago`;
+        if (elapsed) elapsed.style.background = 'var(--red)';
+        if (nowBar)  nowBar.style.background  = 'var(--red)';
+      }
+    }
+  })();
+  {% endif %}
+
+  // ── Token diff (client-side) ────────────────────────────────────────────────
+  function jwtDecode(token) {
+    try {
+      const parts = token.trim().split('.');
+      if (parts.length !== 3) return null;
+      const dec = s => JSON.parse(atob(s.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((s.length+3)%4)));
+      return { header: dec(parts[0]), payload: dec(parts[1]) };
+    } catch { return null; }
+  }
+  function fmtVal(v) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  }
+  function runDiff() {
+    const ta = document.getElementById('diff-a').value.trim();
+    const tb = document.getElementById('diff-b').value.trim();
+    const out = document.getElementById('diff-results');
+    if (!ta || !tb) { out.innerHTML = '<p class="text-muted" style="font-size:0.8125rem;">Paste tokens in both fields.</p>'; return; }
+    const da = jwtDecode(ta), db = jwtDecode(tb);
+    if (!da) { out.innerHTML = '<div class="alert alert-error">Token A is not a valid JWT.</div>'; return; }
+    if (!db) { out.innerHTML = '<div class="alert alert-error">Token B is not a valid JWT.</div>'; return; }
+
+    const pa = da.payload, pb = db.payload;
+    const keys = [...new Set([...Object.keys(pa), ...Object.keys(pb)])].sort();
+    let html = '<div class="table-wrap"><table><thead><tr>'
+      + '<th style="width:160px">Claim</th><th>Token A</th><th>Token B</th><th style="width:80px">Status</th>'
+      + '</tr></thead><tbody>';
+    for (const k of keys) {
+      const inA = k in pa, inB = k in pb;
+      const va = fmtVal(pa[k]), vb = fmtVal(pb[k]);
+      const differs = inA && inB && JSON.stringify(pa[k]) !== JSON.stringify(pb[k]);
+      const cls = !inA ? 'diff-only-b' : !inB ? 'diff-only-a' : differs ? 'diff-changed' : '';
+      const badge = !inA ? '<span class="badge badge-blue">B only</span>'
+                  : !inB ? '<span class="badge badge-red">A only</span>'
+                  : differs ? '<span class="badge badge-yellow">&#9888; differs</span>'
+                  : '<span class="badge badge-green">same</span>';
+      html += `<tr class="${cls}">
+        <td><span class="claim-key">${k}</span></td>
+        <td style="font-family:var(--mono);font-size:0.8125rem;word-break:break-all;">${inA ? va : '<span class="text-muted">—</span>'}</td>
+        <td style="font-family:var(--mono);font-size:0.8125rem;word-break:break-all;">${inB ? vb : '<span class="text-muted">—</span>'}</td>
+        <td>${badge}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+
+    // Header diff summary
+    const headerDiff = JSON.stringify(da.header) !== JSON.stringify(db.header);
+    if (headerDiff) {
+      html = `<div class="alert alert-warning" style="margin-bottom:8px;">
+        Header fields differ — A: <code>${JSON.stringify(da.header)}</code> / B: <code>${JSON.stringify(db.header)}</code>
+      </div>` + html;
+    }
+    out.innerHTML = html;
   }
 </script>
 {% endblock %}

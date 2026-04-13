@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Conformance — OIDC Diagnostics{% endblock %}
+
+{% block extra_css %}
+.conf-wrap { max-width: 900px; margin: 0 auto; }
+
+/* Status badges */
+.status-pass { background: #d1e7dd; color: #0f5132; }
+.status-warn { background: #fff3cd; color: #664d03; }
+.status-fail { background: #f8d7da; color: #842029; }
+.status-info { background: #cff4fc; color: #055160; }
+.status-skip { background: #e9ecef; color: #495057; }
+[data-theme="dark"] .status-pass { background: #0d2a1a; color: #4ade80; }
+[data-theme="dark"] .status-warn { background: #2a1f00; color: #fbbf24; }
+[data-theme="dark"] .status-fail { background: #2a0d10; color: #f87171; }
+[data-theme="dark"] .status-info { background: #0d1f35; color: #60a5fa; }
+[data-theme="dark"] .status-skip { background: #232536; color: #94a3b8; }
+
+.status-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 100px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; white-space: nowrap;
+}
+
+/* Summary row */
+.summary-grid {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;
+}
+.summary-tile {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 20px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  min-width: 90px;
+}
+.summary-tile .tile-count { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+.summary-tile .tile-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+
+/* Check rows */
+.conf-table td { vertical-align: top; padding: 10px 14px; }
+.conf-table td:first-child { width: 90px; }
+.conf-table td:last-child  { width: 140px; color: var(--muted); font-size: 0.75rem; }
+.check-name   { font-size: 0.875rem; font-weight: 500; margin-bottom: 2px; }
+.check-detail { font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
+.check-detail code { font-size: 0.75rem; }
+
+/* Provider selector */
+.provider-selector {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 20px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+{% endblock %}
+
+{% block content %}
+<div class="conf-wrap">
+  <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">OIDC Conformance &amp; Security Analysis</h1>
+  <p class="text-muted" style="margin-bottom:20px;font-size:0.875rem;">
+    Checks the provider's discovery document against the OIDC Core 1.0 specification and
+    current security best-practice RFCs. Where a session is active, token claims are also validated.
+  </p>
+
+  {# Provider selector / run form #}
+  <form method="get" action="{{ url_for('conformance') }}">
+    <div class="provider-selector">
+      {% if multi_provider %}
+      <label style="font-size:0.875rem;font-weight:500;white-space:nowrap;">Provider:</label>
+      <select name="provider" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:0.875rem;">
+        {% for p in providers %}
+        <option value="{{ p.id }}" {% if p.id == provider_id %}selected{% endif %}>{{ p.name }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input type="hidden" name="provider" value="{{ provider_id }}">
+      {% endif %}
+      <input type="hidden" name="run" value="1">
+      <button type="submit" class="btn btn-primary">&#9654; Run checks</button>
+      {% if result and not result.get('error') %}
+      <span class="text-muted" style="font-size:0.8125rem;">
+        Discovery fetched in {{ result.latency_ms }}ms
+      </span>
+      {% endif %}
+    </div>
+  </form>
+
+  {# Error #}
+  {% if result and result.get('error') %}
+  <div class="alert alert-error">{{ result.error }}</div>
+  {% endif %}
+
+  {# Results #}
+  {% if result and result.get('checks') %}
+
+  {# Summary tiles #}
+  <div class="summary-grid">
+    {% set counts = result.counts %}
+    {% if counts.get('fail', 0) %}
+    <div class="summary-tile" style="border-color:#f5c2c7;">
+      <span class="tile-count" style="color:var(--red);">{{ counts.fail }}</span>
+      <span class="tile-label" style="color:var(--red);">Fail</span>
+    </div>
+    {% endif %}
+    {% if counts.get('warn', 0) %}
+    <div class="summary-tile" style="border-color:#ffe69c;">
+      <span class="tile-count" style="color:var(--yellow);">{{ counts.warn }}</span>
+      <span class="tile-label" style="color:var(--yellow);">Warn</span>
+    </div>
+    {% endif %}
+    <div class="summary-tile" style="border-color:#badbcc;">
+      <span class="tile-count" style="color:var(--green);">{{ counts.get('pass', 0) }}</span>
+      <span class="tile-label" style="color:var(--green);">Pass</span>
+    </div>
+    {% if counts.get('info', 0) %}
+    <div class="summary-tile">
+      <span class="tile-count" style="color:var(--primary);">{{ counts.info }}</span>
+      <span class="tile-label" style="color:var(--primary);">Info</span>
+    </div>
+    {% endif %}
+    {% if counts.get('skip', 0) %}
+    <div class="summary-tile">
+      <span class="tile-count">{{ counts.skip }}</span>
+      <span class="tile-label">Skipped</span>
+    </div>
+    {% endif %}
+  </div>
+
+  {# Checks grouped by category #}
+  {% for category, checks in result.checks | groupby('category') %}
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
+      <span class="card-title">{{ category }}</span>
+      <span style="margin-left:auto;display:flex;gap:6px;">
+        {% set cat_fail = checks | selectattr('status','eq','fail') | list | length %}
+        {% set cat_warn = checks | selectattr('status','eq','warn') | list | length %}
+        {% set cat_pass = checks | selectattr('status','eq','pass') | list | length %}
+        {% if cat_fail %}<span class="badge badge-red">{{ cat_fail }} fail</span>{% endif %}
+        {% if cat_warn %}<span class="badge badge-yellow">{{ cat_warn }} warn</span>{% endif %}
+        <span class="badge badge-green">{{ cat_pass }} pass</span>
+      </span>
+    </div>
+    <div style="padding:0;">
+      <table class="conf-table" style="width:100%;border-collapse:collapse;">
+        <tbody>
+          {% for check in checks %}
+          <tr style="border-bottom:1px solid var(--border);">
+            <td>
+              <span class="status-badge status-{{ check.status }}">{{ check.status }}</span>
+            </td>
+            <td>
+              <div class="check-name">{{ check.name }}</div>
+              <div class="check-detail">{{ check.detail }}</div>
+            </td>
+            <td>
+              {% if check.ref %}<code>{{ check.ref }}</code>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% elif not result %}
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:40px;color:var(--muted);">
+      <div style="font-size:2rem;margin-bottom:12px;">&#10003;</div>
+      <p style="font-size:0.9375rem;">Select a provider and click <strong>Run checks</strong> to begin.</p>
+      <p style="font-size:0.8125rem;margin-top:8px;">
+        Checks cover: OIDC Core required/recommended fields, HTTPS, algorithm security,
+        PKCE, and token claim validation (when signed in).
+      </p>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

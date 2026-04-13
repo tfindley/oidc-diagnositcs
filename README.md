@@ -7,20 +7,50 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 
 ## Features
 
+### Claims view
+
 - **Five-tab claims view** — ID Token · Access Token · UserInfo · Compare · Raw JWT
 - **Compare tab** — shows every unique claim key across all three sources and flags ⚠ where the same claim has different values
+- **Scope labelling** — each claim is badged with the OIDC scope that defines it; filter by scope with one click
+- **Empty-scope warnings** — highlights scopes that were granted but returned no claims
 - **Live search** — filter claims by name or value instantly
 - **Mask sensitive values** — blur `sub`, `email`, `name`, etc. for safe screenshotting
-- **Token expiry countdown** — live timer in the navigation bar showing how long the session token remains valid
-- **Token refresh** — refresh the access token without signing out (if provider issues refresh tokens)
+- **Token expiry countdown** — live timer in the nav bar and claims header
+- **Token refresh** — refresh the access token without signing out (requires `offline_access` scope)
 - **Copy buttons** — per-claim copy and full JSON export
-- **Standalone JWT decoder** — paste any token and decode it without logging in
+
+### JWT decoder
+
+- **Standalone decoder** — paste any token and decode it without logging in
+- **Token visualiser** — colour-coded header · payload · signature display
+- **Expiry warning** — immediately flags tokens whose `exp` has passed
+- **Token timeline** — visual bar showing `iat` → now → `exp`, with remaining time or expiry age
+- **Decode history** — last 5 decoded tokens stored in browser `localStorage` with quick-restore
+- **Token diff** — paste two JWTs and compare their claims side by side; highlights added, removed, and changed claims
+- **How to get a JWT** — expandable guide covering DevTools, `curl`, Bearer headers, and Keycloak admin console
+
+### Conformance & security analysis
+
+- **OIDC conformance checks** — validates the provider's discovery document against OIDC Core 1.0 required and recommended fields
+- **Security analysis** — checks for: `none` algorithm, HMAC signing keys, HTTPS on all endpoints, PKCE S256 support, `plain` PKCE, and algorithm strength (EC/PSS preferred over RSA PKCS#1 v1.5)
+- **Token claim validation** — when signed in, validates `iss`, `aud`, `sub`, `exp`, `iat`, issuer match, and audience match against the configured client ID
+- **RFC references** — every check cites the relevant specification (OIDC Core 1.0, RFC 8725, RFC 7636, RFC 9700, etc.)
+
+### Multi-provider mode
+
+- **Provider cards** — each provider gets its own card with connectivity check and provider metadata
+- **Signed-in state** — the active provider card shows the signed-in username with Refresh, Sign out, and Claims buttons; inactive cards show Sign in
+- **SHOW_CONFIG in multi-provider** — when `SHOW_CONFIG=true`, each provider card has a collapsible Configuration section showing that provider's discovery URL, client ID (masked), scopes, PKCE method, and callback URL
+- **Scope analysis** — shows which scopes were granted and highlights any that returned no claims
+
+### UI
+
+- **Dark mode** — full dark theme toggle in the nav bar; respects `prefers-color-scheme` by default, persisted to `localStorage`
 - **Connectivity checker** — checks both the app server and your browser can reach the OIDC provider
 - **Provider discovery viewer** — fetches and displays the `.well-known/openid-configuration`, with your current PKCE method and signing algorithm highlighted
-- **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported (Keycloak)
+- **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported
 - **PKCE S256** — enabled by default; required by Kanidm, recommended everywhere
 - **ES256 / RS256** — configurable token signing algorithm enforcement
-- **Multi-provider support** — configure multiple OIDC providers via `providers.yml`; each gets its own login button and callback URL
 - **Help menu** — connectivity guide, scope reference, and OIDC flow diagram
 
 ---
@@ -102,6 +132,25 @@ See [PROVIDERS.md](docs/PROVIDERS.md) for guides on how to add the OIDC Diagnost
 
 ---
 
+## Conformance & Security Analysis
+
+The **Conformance** page (`/conformance`) checks your provider against the OIDC specification and current security best practices without requiring any changes to your provider configuration.
+
+**What it checks:**
+
+| Category | Checks |
+| --- | --- |
+| Discovery Document | 7 REQUIRED fields (OIDC Core §4), 4 RECOMMENDED fields |
+| Security — HTTPS | Issuer, authorization, token, JWKS, UserInfo, end-session endpoints |
+| Security — Algorithms | `none` forbidden (RFC 8725 §2.1), HMAC keys warned (§2.7), EC/PSS preferred over PKCS#1 (§3.2) |
+| Security — PKCE | S256 required, `plain` warned (RFC 7636), no PKCE warned for public clients |
+| Optional Features | RP-initiated logout, back-channel logout, `claims` parameter, signed request objects |
+| Token Validation | `sub`, `iss`, `aud`, `exp`, `iat` present; issuer and audience match; token not expired; signing algorithm |
+
+Token validation runs automatically when you are signed in to the provider being checked. All checks cite the relevant RFC or specification section.
+
+---
+
 ## Configuration Reference
 
 All single-provider configuration is via environment variables in a `.env` file. When `providers.yml` is present, the `OIDC_*` variables are ignored.
@@ -128,11 +177,11 @@ All single-provider configuration is via environment variables in a `.env` file.
 | `SESSION_COOKIE_SECURE` | No | `false`* | Force the `Secure` flag on the session cookie (*auto-set when `PREFERRED_URL_SCHEME=https`) |
 | `SESSION_LIFETIME_MINUTES` | No | `120` | Max lifetime for permanent sessions; sessions in this app are non-permanent and expire on browser close |
 
-### UI
+### UI configuration
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `SHOW_CONFIG` | No | `false` | Show the configuration card on the landing page (client ID is always masked — click to reveal) |
+| `SHOW_CONFIG` | No | `false` | Show the configuration card on the landing page (client ID is always masked — click to reveal). In multi-provider mode, shows a collapsible configuration section on each provider card. |
 | `PRIVACY_NOTICE` | No | `false` | Show a data-handling notice on the landing page — recommended for public or shared deployments |
 | `BANNER_TEXT` | No | *(hidden)* | Custom message shown on the landing page before the login button — useful for demo or maintenance notices |
 | `BANNER_TYPE` | No | `info` | Style of the custom banner: `info`, `warning`, `error`, or `success` |
