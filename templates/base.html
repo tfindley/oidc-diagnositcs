@@ -54,6 +54,7 @@
       border-radius: 6px; display: flex; align-items: center;
       justify-content: center; color: #fff; font-size: 13px;
     }
+    .nav-links { display: contents; }
     .nav-link {
       font-size: 0.875rem; color: var(--muted); text-decoration: none;
       padding: 5px 10px; border-radius: 6px;
@@ -65,6 +66,31 @@
     .nav-user {
       font-size: 0.8125rem; color: var(--muted);
       display: flex; align-items: center; gap: 10px;
+    }
+    /* Hamburger — hidden on desktop */
+    .nav-burger {
+      display: none; flex-direction: column; justify-content: center;
+      gap: 5px; background: none; border: none; cursor: pointer;
+      padding: 6px; border-radius: 6px; color: var(--muted);
+    }
+    .nav-burger:hover { background: var(--bg); }
+    .nav-burger span {
+      display: block; width: 20px; height: 2px;
+      background: currentColor; border-radius: 2px; transition: all .2s;
+    }
+    @media (max-width: 640px) {
+      nav { padding: 0 16px; gap: 4px; }
+      .nav-brand-text { display: none; }
+      .nav-burger { display: flex; }
+      .nav-links {
+        display: none; flex-direction: column; align-items: stretch;
+        position: absolute; top: 52px; left: 0; right: 0;
+        background: var(--surface); border-bottom: 1px solid var(--border);
+        padding: 8px 16px; gap: 2px; z-index: 199;
+        box-shadow: 0 4px 12px rgba(0,0,0,.08);
+      }
+      .nav-links.open { display: flex; }
+      .nav-links .nav-link { padding: 9px 10px; font-size: 0.9375rem; }
     }
 
     /* ── Layout ── */
@@ -447,6 +473,37 @@
     [data-theme="dark"] .diff-changed { background: #1f1800; }
     [data-theme="dark"] code { background: #2a2d4a; color: #c9d1e0; }
     [data-theme="dark"] pre  { background: #141520; border-color: #2a2d4a; color: #c9d1e0; }
+    /* Plain hyperlinks get better contrast in dark mode */
+    [data-theme="dark"] a:not([class]) { color: #93a8fa; }
+
+    /* ── Provider config rows (used in index + providers page) ── */
+    .config-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.8125rem;
+    }
+    .config-row:last-child { border-bottom: none; }
+    .config-label { width: 160px; flex-shrink: 0; color: var(--muted); font-weight: 500; }
+    .config-val   { font-family: var(--mono); word-break: break-all; flex: 1; }
+
+    /* ── Provider metadata (discovery) ── */
+    .detail-sel {
+      font-size: 0.875rem; padding: 4px 8px;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); color: var(--text);
+    }
+    .disc-field { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
+    .disc-field:last-child { border-bottom: none; }
+    .disc-key  { font-family: var(--mono); font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .disc-desc { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+    .disc-val  { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); word-break: break-all; }
+    .disc-alg-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .disc-alg {
+      padding: 1px 7px; border-radius: 4px; font-family: var(--mono); font-size: 0.75rem;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .disc-alg.in-use { background: #dde3fd; color: var(--primary); border-color: #c5cdf9; font-weight: 600; }
+    [data-theme="dark"] .disc-alg.in-use { background: #1e2850; color: #93a8fa; border-color: #2d3d7a; }
 
     {% block extra_css %}{% endblock %}
   </style>
@@ -457,20 +514,30 @@
       <div class="nav-icon">&#9632;</div>
       <span class="nav-brand-text">OIDC Diagnostics</span>
     </a>
-    <a href="{{ url_for('decode_tool') }}"
-       class="nav-link {% if request.endpoint == 'decode_tool' %}active{% endif %}">
-      JWT Decoder
-    </a>
-    <a href="{{ url_for('conformance') }}"
-       class="nav-link {% if request.endpoint == 'conformance' %}active{% endif %}">
-      Conformance
-    </a>
-    {% if session.get('user') %}
-    <a href="{{ url_for('claims') }}"
-       class="nav-link {% if request.endpoint == 'claims' %}active{% endif %}">
-      Claims
-    </a>
-    {% endif %}
+    <button class="nav-burger" id="nav-burger" onclick="toggleNav()" aria-label="Menu"
+            aria-expanded="false" aria-controls="nav-links">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="nav-links" id="nav-links" role="navigation">
+      <a href="{{ url_for('decode_tool') }}"
+         class="nav-link {% if request.endpoint == 'decode_tool' %}active{% endif %}">
+        JWT Decoder
+      </a>
+      <a href="{{ url_for('providers_page') }}"
+         class="nav-link {% if request.endpoint == 'providers_page' %}active{% endif %}">
+        Providers
+      </a>
+      <a href="{{ url_for('conformance') }}"
+         class="nav-link {% if request.endpoint == 'conformance' %}active{% endif %}">
+        Conformance
+      </a>
+      {% if session.get('user') %}
+      <a href="{{ url_for('claims') }}"
+         class="nav-link {% if request.endpoint == 'claims' %}active{% endif %}">
+        Claims
+      </a>
+      {% endif %}
+    </div>
     <div class="nav-spacer"></div>
     {% if session.get('user') %}
     <div class="nav-user" style="display:flex;align-items:center;gap:8px;">
@@ -806,6 +873,89 @@
     btn.innerHTML = document.documentElement.getAttribute('data-theme') === 'dark' ? '&#9728;' : '&#9680;';
   }
   updateThemeIcon();
+
+  // ── Mobile nav toggle ─────────────────────────────────────────────────────
+  function toggleNav() {
+    const links = document.getElementById('nav-links');
+    const burger = document.getElementById('nav-burger');
+    const open = links.classList.toggle('open');
+    burger.setAttribute('aria-expanded', open);
+  }
+  // Close nav if user clicks outside of it
+  document.addEventListener('click', e => {
+    const nav = document.querySelector('nav');
+    if (nav && !nav.contains(e.target)) {
+      const links = document.getElementById('nav-links');
+      const burger = document.getElementById('nav-burger');
+      if (links) links.classList.remove('open');
+      if (burger) burger.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // ── Provider discovery loader (used by index + providers pages) ───────────
+  const DISC_FIELDS = [
+    { key: 'issuer',                                    desc: 'The authoritative URL for this provider. Must match the iss claim in tokens.' },
+    { key: 'authorization_endpoint',                    desc: 'Where the browser is redirected for user login.' },
+    { key: 'token_endpoint',                            desc: 'Where the app exchanges the auth code for tokens (back-channel).' },
+    { key: 'userinfo_endpoint',                         desc: 'Where the app fetches additional user profile claims.' },
+    { key: 'jwks_uri',                                  desc: 'Public keys used to verify token signatures.' },
+    { key: 'end_session_endpoint',                      desc: 'RP-initiated logout endpoint. Not all providers support this.' },
+    { key: 'scopes_supported',                          desc: 'OAuth 2.0 scopes this server accepts.' },
+    { key: 'response_types_supported',                  desc: 'Supported response_type values for the authorization endpoint.' },
+    { key: 'grant_types_supported',                     desc: 'Supported OAuth 2.0 grant types.' },
+    { key: 'code_challenge_methods_supported',          desc: 'Supported PKCE code_challenge_method values. S256 is recommended.', configKey: 'pkce_method' },
+    { key: 'id_token_signing_alg_values_supported',     desc: 'Algorithms used to sign ID tokens. ES256 is preferred over RS256.', configKey: 'token_signing_alg' },
+    { key: 'userinfo_signing_alg_values_supported',     desc: 'Algorithms used to sign UserInfo responses (if signed).' },
+    { key: 'token_endpoint_auth_methods_supported',     desc: 'How the client authenticates to the token endpoint.' },
+    { key: 'claims_supported',                          desc: 'Claims this server may return. Actual claims depend on granted scopes.' },
+    { key: 'subject_types_supported',                   desc: 'public = consistent sub across clients; pairwise = unique sub per client.' },
+  ];
+  async function loadDiscovery(card) {
+    const url   = card.dataset.discoveryUrl;
+    const pkce  = card.dataset.pkce || '';
+    const alg   = card.dataset.alg  || '';
+    const panel = card.querySelector('.disc-panel');
+    panel.innerHTML = '<p class="text-muted" style="padding:16px;font-size:0.8125rem;">Loading…</p>';
+    const params = new URLSearchParams({ url });
+    if (pkce) params.set('pkce', pkce);
+    if (alg)  params.set('alg', alg);
+    let data;
+    try {
+      const resp = await fetch('/api/discovery?' + params.toString());
+      data = await resp.json();
+    } catch(e) {
+      panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">Failed to load: ${e}</div>`;
+      return;
+    }
+    if (data.error) {
+      panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">${data.error}</div>`;
+      return;
+    }
+    const appCfg = data._app_config || {};
+    let html = '<div style="padding:0 20px;">';
+    for (const f of DISC_FIELDS) {
+      const val = data[f.key];
+      if (val === undefined) continue;
+      html += `<div class="disc-field"><div class="disc-key">${f.key}</div>`;
+      html += `<div class="disc-desc">${f.desc}</div><div class="disc-val">`;
+      if (Array.isArray(val)) {
+        html += '<div class="disc-alg-list">';
+        for (const item of val) {
+          const inUse = f.configKey && appCfg[f.configKey] === item;
+          html += `<span class="disc-alg${inUse ? ' in-use' : ''}" title="${inUse ? 'Currently configured' : ''}">${item}${inUse ? ' ✓' : ''}</span>`;
+        }
+        html += '</div>';
+      } else {
+        html += String(val);
+      }
+      html += '</div></div>';
+    }
+    if (appCfg.latency_ms !== undefined)
+      html += `<p class="text-muted" style="font-size:0.75rem;padding:8px 0;">Fetched in ${appCfg.latency_ms}ms</p>`;
+    html += '</div>';
+    panel.innerHTML = html;
+    panel.dataset.loaded = '1';
+  }
 
   // ── Help dropdown ──────────────────────────────────────────────────────────
   function toggleHelp() {

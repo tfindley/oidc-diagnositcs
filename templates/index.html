@@ -13,16 +13,6 @@
 .login-btn { font-size: 1rem; padding: 12px 32px; border-radius: 8px; margin: 4px; }
 .login-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 24px; }
 
-/* ── Config card ── */
-.config-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  padding: 10px 0; border-bottom: 1px solid var(--border);
-  font-size: 0.8125rem;
-}
-.config-row:last-child { border-bottom: none; }
-.config-label { width: 160px; flex-shrink: 0; color: var(--muted); font-weight: 500; }
-.config-val   { font-family: var(--mono); word-break: break-all; flex: 1; }
-
 /* ── Provider status pill ── */
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px;
@@ -70,23 +60,6 @@
   color: var(--muted); word-break: break-all; padding: 2px 0 4px;
 }
 
-/* ── Provider metadata (discovery) ── */
-.disc-field { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
-.disc-field:last-child { border-bottom: none; }
-.disc-key { font-family: var(--mono); font-weight: 600; color: var(--text); margin-bottom: 2px; }
-.disc-desc { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
-.disc-val { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); word-break: break-all; }
-.disc-alg-list { display: flex; flex-wrap: wrap; gap: 4px; }
-.disc-alg { padding: 1px 7px; border-radius: 4px; font-family: var(--mono); font-size: 0.75rem;
-            background: var(--surface2); border: 1px solid var(--border); }
-.disc-alg.in-use { background: #dde3fd; color: var(--primary); border-color: #c5cdf9; font-weight: 600; }
-
-/* ── Provider detail panel ── */
-.detail-sel {
-  font-size: 0.875rem; padding: 4px 8px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); color: var(--text);
-}
 {% endblock %}
 
 {% block content %}
@@ -259,71 +232,10 @@
   </div>
   {% endfor %}
 </div>
-
-{# ── Provider detail panel (Configuration + Provider Metadata) ── #}
-<div class="card" id="provider-detail-card" style="margin-bottom:20px;">
-  <div class="card-header" style="flex-wrap:wrap;gap:8px;">
-    <span class="card-title">Provider Details</span>
-    {% if providers | length > 1 %}
-    <select id="detail-sel" class="detail-sel" style="margin-left:auto;"
-            onchange="detailSetProvider(this.value)">
-      {% for p in providers %}
-      <option value="{{ p.id }}">{{ p.name }}</option>
-      {% endfor %}
-    </select>
-    {% endif %}
-  </div>
-  <div class="tab-bar" style="padding:0 20px;">
-    {% if show_config %}
-    <button class="tab-btn active" id="dtab-config" onclick="detailSetTab('config')">Configuration</button>
-    {% endif %}
-    <button class="tab-btn{{ '' if show_config else ' active' }}" id="dtab-meta" onclick="detailSetTab('meta')">
-      Provider Metadata <span class="text-muted" style="font-weight:400;font-size:0.75rem;">/.well-known</span>
-    </button>
-  </div>
-  {% for p in providers %}
-  {% if show_config %}
-  <div class="detail-pane" id="dp-config-{{ p.id }}" style="display:none;padding:0 20px 4px;">
-    <div class="config-row">
-      <span class="config-label">Discovery URL</span>
-      <span class="config-val">{{ p.discovery_url }}</span>
-    </div>
-    <div class="config-row">
-      <span class="config-label">Client ID</span>
-      <span class="config-val">
-        <span style="filter:blur(4px);transition:filter .15s;cursor:pointer;user-select:none;"
-              onclick="this.style.filter=''">{{ p.client_id }}</span>
-        <span class="text-muted" style="font-size:0.75rem;margin-left:4px;">(click to reveal)</span>
-      </span>
-    </div>
-    <div class="config-row">
-      <span class="config-label">Scopes</span>
-      <span class="config-val">{{ p.scope or 'openid email profile' }}</span>
-    </div>
-    <div class="config-row">
-      <span class="config-label">PKCE</span>
-      <span class="config-val">
-        {% if p.pkce_method == 'disabled' %}<span class="badge badge-yellow">disabled</span>
-        {% else %}<span class="badge badge-green">{{ p.pkce_method or 'S256' }}</span>{% endif %}
-      </span>
-    </div>
-    <div class="config-row" style="border-bottom:none;">
-      <span class="config-label">Callback URL</span>
-      <span class="config-val">{{ request.url_root }}callback/{{ p.id }}</span>
-    </div>
-  </div>
-  {% endif %}
-  <div class="detail-pane" id="dp-meta-{{ p.id }}"
-       data-discovery-url="{{ p.discovery_url }}"
-       data-pkce="{{ p.pkce_method or 'S256' }}"
-       data-alg="{{ p.token_signing_alg or '' }}"
-       style="display:none;">
-    <div class="disc-panel">
-      <p class="text-muted" style="padding:16px;font-size:0.8125rem;">Loading…</p>
-    </div>
-  </div>
-  {% endfor %}
-</div>
+<p class="text-muted" style="font-size:0.8125rem;text-align:center;margin-bottom:20px;">
+  View configuration and discovery metadata on the
+  <a href="{{ url_for('providers_page') }}">Providers</a> page.
+</p>
 
 {# ── Single-provider: 2-column responsive grid ── #}
 {% else %}
@@ -392,24 +304,6 @@
 
 {% block scripts %}
 <script>
-const DISC_FIELDS = [
-  { key: 'issuer',                                    label: 'Issuer',                    desc: 'The authoritative URL for this provider. Must match the iss claim in tokens.' },
-  { key: 'authorization_endpoint',                    label: 'Authorization endpoint',    desc: 'Where the browser is redirected for user login.' },
-  { key: 'token_endpoint',                            label: 'Token endpoint',             desc: 'Where the app exchanges the auth code for tokens (back-channel).' },
-  { key: 'userinfo_endpoint',                         label: 'UserInfo endpoint',          desc: 'Where the app fetches additional user profile claims.' },
-  { key: 'jwks_uri',                                  label: 'JWKS URI',                   desc: 'Public keys used to verify token signatures.' },
-  { key: 'end_session_endpoint',                      label: 'End session endpoint',       desc: 'RP-initiated logout endpoint. Not all providers support this (e.g. Kanidm does not).' },
-  { key: 'scopes_supported',                          label: 'Scopes supported',           desc: 'OAuth 2.0 scopes this server accepts.' },
-  { key: 'response_types_supported',                  label: 'Response types',             desc: 'Supported response_type values for the authorization endpoint.' },
-  { key: 'grant_types_supported',                     label: 'Grant types',                desc: 'Supported OAuth 2.0 grant types.' },
-  { key: 'code_challenge_methods_supported',          label: 'PKCE methods',               desc: 'Supported PKCE code_challenge_method values. S256 is recommended; plain is less secure.', configKey: 'pkce_method' },
-  { key: 'id_token_signing_alg_values_supported',     label: 'ID token signing algs',      desc: 'Algorithms used to sign ID tokens. ES256 (ECDSA) is preferred over RS256 (RSA).', configKey: 'token_signing_alg' },
-  { key: 'userinfo_signing_alg_values_supported',     label: 'UserInfo signing algs',      desc: 'Algorithms used to sign UserInfo responses (if signed).' },
-  { key: 'token_endpoint_auth_methods_supported',     label: 'Token endpoint auth',        desc: 'How the client authenticates to the token endpoint (e.g. client_secret_basic).' },
-  { key: 'claims_supported',                          label: 'Claims supported',           desc: 'Claims this server may return. Actual claims depend on granted scopes.' },
-  { key: 'subject_types_supported',                   label: 'Subject types',              desc: 'public = consistent sub across clients; pairwise = unique sub per client (privacy).' },
-];
-
 // ── Connectivity check for a specific card ─────────────────────────────────
 function checkConnectivity(card) {
   const discoveryUrl = card.dataset.discoveryUrl;
@@ -457,93 +351,5 @@ function checkConnectivity(card) {
     .catch(e => connErr(browserEl, e.message, 'conn-brw'));
 }
 
-// ── Discovery loader for a specific card ───────────────────────────────────
-async function loadDiscovery(card) {
-  const url  = card.dataset.discoveryUrl;
-  const pkce = card.dataset.pkce || '';
-  const alg  = card.dataset.alg  || '';
-  const panel = card.querySelector('.disc-panel');
-
-  panel.innerHTML = '<p class="text-muted" style="padding:16px;font-size:0.8125rem;">Loading…</p>';
-
-  const params = new URLSearchParams({ url });
-  if (pkce) params.set('pkce', pkce);
-  if (alg)  params.set('alg', alg);
-
-  let data;
-  try {
-    const resp = await fetch('/api/discovery?' + params.toString());
-    data = await resp.json();
-  } catch(e) {
-    panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">Failed to load: ${e}</div>`;
-    return;
-  }
-  if (data.error) {
-    panel.innerHTML = `<div class="alert alert-error" style="margin:12px;">${data.error}</div>`;
-    return;
-  }
-
-  const appCfg = data._app_config || {};
-  let html = '<div style="padding:0 20px;">';
-  for (const f of DISC_FIELDS) {
-    const val = data[f.key];
-    if (val === undefined) continue;
-    html += `<div class="disc-field">
-      <div class="disc-key">${f.key}</div>
-      <div class="disc-desc">${f.desc}</div>
-      <div class="disc-val">`;
-    if (Array.isArray(val)) {
-      html += '<div class="disc-alg-list">';
-      for (const item of val) {
-        const inUse = f.configKey && appCfg[f.configKey] === item;
-        html += `<span class="disc-alg${inUse ? ' in-use' : ''}" title="${inUse ? 'Currently configured' : ''}">${item}${inUse ? ' ✓' : ''}</span>`;
-      }
-      html += '</div>';
-    } else {
-      html += String(val);
-    }
-    html += '</div></div>';
-  }
-  if (appCfg.latency_ms !== undefined)
-    html += `<p class="text-muted" style="font-size:0.75rem;padding:8px 0;">Fetched in ${appCfg.latency_ms}ms</p>`;
-  html += '</div>';
-  panel.innerHTML = html;
-  // Mark as loaded so toggle won't reload
-  panel.dataset.loaded = '1';
-}
-
-// ── Provider detail panel (multi-provider) ────────────────────────────────
-{% if multi_provider %}
-let _detailProvider = {{ (signed_in_provider or (providers[0].id if providers else '')) | tojson }};
-let _detailTab      = {{ ('config' if show_config else 'meta') | tojson }};
-// Sync the dropdown to the pre-selected provider
-(function() {
-  const sel = document.getElementById('detail-sel');
-  if (sel) sel.value = _detailProvider;
-})();
-
-function detailSetProvider(id) {
-  _detailProvider = id;
-  _showDetailPane();
-}
-function detailSetTab(tab) {
-  _detailTab = tab;
-  document.querySelectorAll('#provider-detail-card .tab-btn').forEach(b => {
-    b.classList.toggle('active', b.id === 'dtab-' + tab);
-  });
-  _showDetailPane();
-}
-function _showDetailPane() {
-  document.querySelectorAll('.detail-pane').forEach(p => { p.style.display = 'none'; });
-  const pane = document.getElementById('dp-' + _detailTab + '-' + _detailProvider);
-  if (!pane) return;
-  pane.style.display = '';
-  if (_detailTab === 'meta') {
-    const disc = pane.querySelector('.disc-panel');
-    if (disc && !disc.dataset.loaded) loadDiscovery(pane);
-  }
-}
-_showDetailPane();
-{% endif %}
 </script>
 {% endblock %}
