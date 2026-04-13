@@ -98,7 +98,7 @@
   No data is written to any database or log file. Tokens are processed server-side only to
   decode and display them, and are not transmitted to any third party.
   Only connect accounts you are comfortable sharing with the operator of this instance.
-  <a href="#" onclick="showModal('modal-privacy');return false;">Learn more &#8594;</a>
+  <a href="{{ url_for('reference') }}?tab=privacy">Learn more &#8594;</a>
 </div>
 {% endif %}
 
@@ -130,60 +130,10 @@
     </div>
   {% endif %}
 
-  {# Config card — hidden by default; set SHOW_CONFIG=true to reveal #}
-  {% if show_config and not multi_provider %}
-  <div class="card" style="text-align:left;margin-bottom:16px;">
-    <div class="card-header"><span class="card-title">Configuration</span></div>
-    <div class="card-body" style="padding:0 20px;">
-      <div class="config-row">
-        <span class="config-label">Discovery URL</span>
-        <span class="config-val">
-          {% if config.discovery_url %}{{ config.discovery_url }}
-          {% else %}<span class="text-danger">not set</span>{% endif %}
-        </span>
-      </div>
-      <div class="config-row">
-        <span class="config-label">Client ID</span>
-        <span class="config-val">
-          {% if config.client_id %}
-          <span id="client-id-val" style="filter:blur(4px);transition:filter .15s;cursor:pointer;user-select:none;"
-                title="Click to reveal"
-                onclick="this.style.filter='';document.getElementById('client-id-hint').style.display='none';">{{ config.client_id }}</span>
-          <span id="client-id-hint" class="text-muted" style="font-size:0.75rem;margin-left:4px;">(click to reveal)</span>
-          {% else %}<span class="text-danger">not set</span>{% endif %}
-        </span>
-      </div>
-      <div class="config-row">
-        <span class="config-label">Scopes</span>
-        <span class="config-val">{{ config.scope or '—' }}</span>
-      </div>
-      <div class="config-row">
-        <span class="config-label">PKCE</span>
-        <span class="config-val">
-          {% if config.pkce_method == 'disabled' %}
-            <span class="badge badge-yellow">disabled</span>
-          {% else %}
-            <span class="badge badge-green">{{ config.pkce_method }}</span>
-          {% endif %}
-        </span>
-      </div>
-      <div class="config-row">
-        <span class="config-label">Token signing alg</span>
-        <span class="config-val">
-          <span class="badge {% if config.token_signing_alg == 'RS256' %}badge-yellow{% else %}badge-blue{% endif %}">
-            {{ config.token_signing_alg }}
-          </span>
-        </span>
-      </div>
-      <div class="config-row">
-        <span class="config-label">Callback URL</span>
-        <span class="config-val">{{ request.url_root }}callback</span>
-      </div>
-    </div>
-  </div>
-  {% elif not show_config and not multi_provider %}
-  <p class="text-muted" style="font-size:0.75rem;margin-bottom:16px;">
-    Configuration details are hidden. Set <code>SHOW_CONFIG=true</code> to reveal.
+  {# Link to provider details — consistent with multi-provider mode #}
+  {% if not multi_provider and config.configured %}
+  <p class="text-muted" style="font-size:0.8125rem;margin-bottom:8px;">
+    <a href="{{ url_for('providers_page') }}">View provider details &#8594;</a>
   </p>
   {% endif %}
 </div>

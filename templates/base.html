@@ -334,13 +334,14 @@
       /* Hide the expiry chip from the nav on small screens;
          it is also shown in the claims page header */
       #nav-expiry-chip { display: none; }
-      /* Tab bar: scroll horizontally rather than wrapping or overflowing the card */
-      .tabs-wrap { padding: 0; }
+      /* Tab bar: scroll horizontally only; block vertical pull on iOS */
+      .tabs-wrap { padding: 0; overflow: hidden; }
       .tabs {
-        overflow-x: auto; overflow-y: visible;
+        overflow-x: auto; overflow-y: hidden;
         flex-wrap: nowrap; padding: 0 14px;
         scrollbar-width: none; -ms-overflow-style: none;
-        overscroll-behavior-x: contain;
+        overscroll-behavior: contain none;
+        touch-action: pan-x;
       }
       .tabs::-webkit-scrollbar { display: none; }
       .tab-btn { white-space: nowrap; flex-shrink: 0; }
@@ -423,6 +424,21 @@
       background: var(--surface2); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 14px;
     }
+
+    /* ── Footer ── */
+    .site-footer {
+      border-top: 1px solid var(--border); background: var(--surface);
+      margin-top: 32px; padding: 14px 24px;
+    }
+    .footer-inner {
+      max-width: 1160px; margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .footer-copy { font-size: 0.75rem; color: var(--muted); }
+    .footer-links { display: flex; gap: 16px; font-size: 0.75rem; }
+    .footer-links a { color: var(--muted); text-decoration: none; }
+    .footer-links a:hover { color: var(--text); }
 
     /* ── Dark mode ────────────────────────────────────────────────────────────── */
     [data-theme="dark"] {
@@ -534,6 +550,14 @@
         Claims
       </a>
       {% endif %}
+      <a href="{{ url_for('reference') }}"
+         class="nav-link {% if request.endpoint == 'reference' %}active{% endif %}">
+        Reference
+      </a>
+      <a href="{{ url_for('about') }}"
+         class="nav-link {% if request.endpoint == 'about' %}active{% endif %}">
+        About
+      </a>
     </div>
     <div class="nav-spacer"></div>
     {% if session.get('user') %}
@@ -567,216 +591,7 @@
       &#9680;
     </button>
 
-    <!-- Help dropdown -->
-    <div class="help-menu" id="help-menu">
-      <button class="btn btn-ghost btn-sm" onclick="toggleHelp()" aria-haspopup="true">
-        &#63; Help
-      </button>
-      <div class="help-dropdown" id="help-dropdown" role="menu">
-        <div class="help-section-label">About</div>
-        <a class="help-item" href="{{ github_url }}" target="_blank" rel="noopener">
-          &#128279; Source code (GitHub)
-        </a>
-        {% if kofi_url %}
-        <a class="help-item" href="{{ kofi_url }}" target="_blank" rel="noopener">
-          &#9749; Support on Ko-fi
-        </a>
-        {% endif %}
-        <div class="help-divider"></div>
-        <div class="help-section-label">Reference</div>
-        <button class="help-item" onclick="showModal('modal-connectivity')">&#128268; Connectivity guide</button>
-        <button class="help-item" onclick="showModal('modal-scopes')">&#128195; Scopes &amp; claims</button>
-        <button class="help-item" onclick="showModal('modal-oidc-flow')">&#8594; OIDC flow</button>
-        <button class="help-item" onclick="showModal('modal-privacy')">&#128274; Data &amp; privacy</button>
-      </div>
-    </div>
   </nav>
-
-  <!-- ── Connectivity guide modal ── -->
-  <dialog id="modal-connectivity" class="modal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <span class="modal-title">Connectivity Guide</span>
-        <button onclick="closeModal('modal-connectivity')" class="modal-close">&#x2715;</button>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted" style="margin-bottom:16px;font-size:0.875rem;">
-          This tool involves three parties. All of the paths below must be reachable for login to work.
-        </p>
-        <div class="flow-diagram">
-          <div class="flow-box flow-browser">&#128100; Browser</div>
-          <div class="flow-arrows">
-            <div class="flow-arrow">&#8594; <code>GET /</code>, <code>/login</code>, <code>/claims</code> <span class="text-muted">(HTTP/S to this app)</span></div>
-            <div class="flow-arrow">&#8594; Redirected to <code>/authorize</code> on the SSO server <span class="text-muted">(login UI)</span></div>
-            <div class="flow-arrow">&#8594; Redirected back to <code>/callback</code> on this app <span class="text-muted">(with auth code)</span></div>
-          </div>
-          <div class="flow-box flow-app">&#128187; This App (server)</div>
-          <div class="flow-arrows">
-            <div class="flow-arrow">&#8594; Fetches <code>/.well-known/openid-configuration</code> <span class="text-muted">(on startup and login)</span></div>
-            <div class="flow-arrow">&#8594; Exchanges auth code for tokens at <code>token_endpoint</code> <span class="text-muted">(back-channel)</span></div>
-            <div class="flow-arrow">&#8594; Fetches <code>jwks_uri</code> to verify token signatures</div>
-            <div class="flow-arrow">&#8594; Fetches <code>userinfo_endpoint</code> for profile claims</div>
-          </div>
-          <div class="flow-box flow-sso">&#128274; SSO Server (Keycloak / Kanidm / etc.)</div>
-        </div>
-        <div class="alert alert-info" style="margin-top:16px;">
-          <strong>Common issue:</strong> The browser can reach the SSO login page, but the app's back-channel
-          token exchange fails. This happens when the container can't resolve the SSO server hostname
-          (DNS differs inside Docker). Use the connectivity check on the home page to diagnose.
-        </div>
-        <h4 style="margin:16px 0 8px;">Logout</h4>
-        <p class="text-muted" style="font-size:0.875rem;">
-          RP-initiated logout sends the browser to the SSO server's <code>end_session_endpoint</code> with
-          the <code>id_token_hint</code> and a <code>post_logout_redirect_uri</code>. Keycloak supports this;
-          Kanidm currently does not (local-only session clear happens instead).
-          Register <code>{{ request.host_url }}</code> as an allowed post-logout URI in your client config.
-        </p>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ── Scopes & claims modal ── -->
-  <dialog id="modal-scopes" class="modal">
-    <div class="modal-box" style="max-width:700px;">
-      <div class="modal-head">
-        <span class="modal-title">Standard OIDC Scopes &amp; Their Claims</span>
-        <button onclick="closeModal('modal-scopes')" class="modal-close">&#x2715;</button>
-      </div>
-      <div class="modal-body">
-        <p class="text-muted" style="margin-bottom:16px;font-size:0.875rem;">
-          The claims you receive depend entirely on which scopes you request. Add scopes to
-          <code>OIDC_SCOPE</code> in your <code>.env</code> file. You must also grant the scopes
-          in your provider's client configuration.
-        </p>
-        <table>
-          <thead><tr><th style="width:130px">Scope</th><th>Claims provided</th><th>Notes</th></tr></thead>
-          <tbody>
-            <tr><td><code>openid</code></td><td><code>sub</code>, <code>iss</code>, <code>aud</code>, <code>exp</code>, <code>iat</code></td><td>Required — activates OIDC mode</td></tr>
-            <tr><td><code>email</code></td><td><code>email</code>, <code>email_verified</code></td><td>Standard OIDC</td></tr>
-            <tr><td><code>profile</code></td><td><code>name</code>, <code>given_name</code>, <code>family_name</code>, <code>preferred_username</code>, <code>picture</code>, <code>locale</code>, <code>zoneinfo</code>, <code>updated_at</code></td><td>Standard OIDC</td></tr>
-            <tr><td><code>address</code></td><td><code>address</code></td><td>Standard OIDC — rarely used</td></tr>
-            <tr><td><code>phone</code></td><td><code>phone_number</code>, <code>phone_number_verified</code></td><td>Standard OIDC — rarely used</td></tr>
-            <tr><td><code>offline_access</code></td><td>(no new claims)</td><td>Requests a refresh token; provider must allow it</td></tr>
-            <tr><td><code>roles</code></td><td><code>realm_access</code>, <code>resource_access</code></td><td><span class="badge badge-yellow">Keycloak-specific</span> — not part of the OIDC spec</td></tr>
-            <tr><td><code>groups</code></td><td><code>groups</code></td><td><span class="badge badge-yellow">Provider-specific</span> — varies by server</td></tr>
-          </tbody>
-        </table>
-        <div class="alert alert-info" style="margin-top:16px;">
-          <strong>Want more claims?</strong> You can't add scopes mid-session — OIDC scopes are set at
-          login time. To get additional claims, add the scopes to <code>OIDC_SCOPE</code> and sign in again.
-          The server only returns claims for scopes it has granted, so you may also need to configure
-          the scope in your provider's client/consent settings.
-        </div>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ── OIDC flow modal ── -->
-  <dialog id="modal-oidc-flow" class="modal">
-    <div class="modal-box" style="max-width:680px;">
-      <div class="modal-head">
-        <span class="modal-title">OIDC Authorization Code Flow</span>
-        <button onclick="closeModal('modal-oidc-flow')" class="modal-close">&#x2715;</button>
-      </div>
-      <div class="modal-body">
-        <pre class="oidc-flow-diagram">Browser                    This App                   SSO Server
-  │                            │                            │
-  │  GET /login                │                            │
-  │ ──────────────────────────►│                            │
-  │                            │  Generate code_verifier    │
-  │                            │  (PKCE S256)               │
-  │                            │                            │
-  │  302 → /authorize          │                            │
-  │◄───────────────────────────│                            │
-  │                            │                            │
-  │  GET /authorize?client_id  │                            │
-  │  &code_challenge=...       │                            │
-  │ ───────────────────────────────────────────────────────►│
-  │                            │                            │  Show login UI
-  │  User authenticates        │                            │◄──────────────
-  │ ◄───────────────────────────────────────────────────────│
-  │                            │                            │
-  │  302 → /callback?code=...  │                            │
-  │◄───────────────────────────────────────────────────────-│
-  │                            │                            │
-  │  GET /callback?code=...    │                            │
-  │ ──────────────────────────►│                            │
-  │                            │  POST /token               │
-  │                            │  {code, code_verifier}     │
-  │                            │ ──────────────────────────►│
-  │                            │                            │  Verify PKCE
-  │                            │  {access_token, id_token,  │  Sign tokens (ES256)
-  │                            │   refresh_token, userinfo} │◄──────────────
-  │                            │◄───────────────────────────│
-  │                            │                            │
-  │                            │  GET /userinfo             │
-  │                            │ ──────────────────────────►│
-  │                            │◄───────────────────────────│
-  │                            │                            │
-  │  302 → /claims             │  Store tokens in session   │
-  │◄───────────────────────────│                            │</pre>
-        <p class="text-muted" style="margin-top:12px;font-size:0.8125rem;">
-          The <strong>code_verifier</strong> never leaves the app server, so intercepting the auth code
-          is useless without it — this is the security benefit of PKCE. Token signing (ES256/RS256) lets
-          the app verify tokens were issued by the expected server without a back-channel call.
-        </p>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- ── Data & privacy modal ── -->
-  <dialog id="modal-privacy" class="modal">
-    <div class="modal-box" style="max-width:660px;">
-      <div class="modal-head">
-        <span class="modal-title">Data &amp; Privacy</span>
-        <button onclick="closeModal('modal-privacy')" class="modal-close">&#x2715;</button>
-      </div>
-      <div class="modal-body">
-        <h4 style="margin-bottom:8px;">What this tool stores</h4>
-        <table style="margin-bottom:16px;">
-          <thead><tr><th>Data</th><th>Where</th><th>Cleared when</th></tr></thead>
-          <tbody>
-            <tr><td>ID token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>Access token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>Refresh token (if issued)</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>UserInfo claims</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-          </tbody>
-        </table>
-        <p style="font-size:0.875rem;margin-bottom:12px;">
-          Sessions use <strong>client-side signed cookies</strong> — token data lives in your browser,
-          not in a server-side database. The server holds tokens in memory only for the brief
-          duration of processing a request. <strong>Nothing is written to disk, a database, or
-          any external service.</strong>
-        </p>
-        <h4 style="margin-bottom:8px;">What the operator's server processes</h4>
-        <p style="font-size:0.875rem;margin-bottom:12px;">
-          The server code receives and decodes your tokens in order to render them for display.
-          It does not log token values. With <code>FLASK_DEBUG=true</code> Flask may surface
-          token data in error traces — a properly configured instance keeps debug mode off.
-        </p>
-        <p style="font-size:0.875rem;margin-bottom:12px;">
-          Your <strong>password is never seen by this tool</strong> — you authenticate directly
-          on your OIDC provider's login page.
-        </p>
-        <h4 style="margin-bottom:8px;">Third parties</h4>
-        <p style="font-size:0.875rem;margin-bottom:12px;">
-          This tool does not connect to any analytics, advertising, or tracking service.
-          The only outbound network calls it makes are to your configured OIDC provider.
-        </p>
-        <div class="alert alert-warning" style="font-size:0.875rem;">
-          <strong>Trust the operator.</strong> As with any OAuth2 client, you are trusting the
-          person who runs this instance. Only sign in with accounts whose data you are comfortable
-          sharing with the instance operator. Use the minimum scopes you need
-          (<code>openid email profile</code> is sufficient for most diagnostic purposes).
-        </div>
-        <p style="font-size:0.75rem;color:var(--muted);margin-top:12px;">
-          Source code: <a href="{{ github_url }}" target="_blank" rel="noopener">{{ github_url }}</a> —
-          licensed under the GNU Affero General Public License v3 (AGPL-3.0).
-          Modifications and deployments must make source available under the same licence.
-        </p>
-      </div>
-    </div>
-  </dialog>
 
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -786,6 +601,21 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+
+  <!-- ── Footer ── -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span class="footer-copy">
+        OIDC Diagnostic Tool &mdash; <a href="{{ url_for('about') }}">About</a>
+      </span>
+      <div class="footer-links">
+        <a href="{{ github_url }}" target="_blank" rel="noopener">&#128279; GitHub</a>
+        {% if kofi_url %}
+        <a href="{{ kofi_url }}" target="_blank" rel="noopener">&#9749; Ko-fi</a>
+        {% endif %}
+      </div>
+    </div>
+  </footer>
 
   <script>
   // ── Copy to clipboard ──────────────────────────────────────────────────────
@@ -954,32 +784,16 @@
     panel.dataset.loaded = '1';
   }
 
-  // ── Help dropdown ──────────────────────────────────────────────────────────
-  function toggleHelp() {
-    document.getElementById('help-dropdown').classList.toggle('open');
-  }
+  // ── User dropdown ──────────────────────────────────────────────────────────
   function toggleUserMenu() {
     document.getElementById('user-dropdown').classList.toggle('open');
   }
   document.addEventListener('click', e => {
-    const helpMenu = document.getElementById('help-menu');
-    if (helpMenu && !helpMenu.contains(e.target))
-      document.getElementById('help-dropdown').classList.remove('open');
     const userMenu = document.getElementById('user-menu');
     if (userMenu && !userMenu.contains(e.target)) {
       const ud = document.getElementById('user-dropdown');
       if (ud) ud.classList.remove('open');
     }
-  });
-
-  // ── Modals ─────────────────────────────────────────────────────────────────
-  function showModal(id) {
-    document.getElementById('help-dropdown').classList.remove('open');
-    document.getElementById(id).showModal();
-  }
-  function closeModal(id) { document.getElementById(id).close(); }
-  document.addEventListener('click', e => {
-    if (e.target.classList.contains('modal')) e.target.close();
   });
   {% if nav_expires_at %}
   // ── Nav token expiry countdown ────────────────────────────────────────────
