@@ -364,7 +364,10 @@
     .help-divider { border-top: 1px solid var(--border); margin: 4px 0; }
 
     /* ── Modals ── */
-    .modal { border: none; border-radius: var(--radius); padding: 0; max-width: 90vw; }
+    .modal {
+      border: none; border-radius: var(--radius); padding: 0; max-width: 90vw;
+      background: var(--surface); color: var(--text);
+    }
     .modal::backdrop { background: rgba(0,0,0,.45); }
     .modal-box { width: 620px; max-width: 100%; }
     .modal-head {
@@ -442,6 +445,8 @@
     [data-theme="dark"] .diff-only-a  { background: #2a0d10; }
     [data-theme="dark"] .diff-only-b  { background: #0d1f2a; }
     [data-theme="dark"] .diff-changed { background: #1f1800; }
+    [data-theme="dark"] code { background: #2a2d4a; color: #c9d1e0; }
+    [data-theme="dark"] pre  { background: #141520; border-color: #2a2d4a; color: #c9d1e0; }
 
     {% block extra_css %}{% endblock %}
   </style>
