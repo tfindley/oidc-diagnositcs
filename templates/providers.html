@@ -34,6 +34,11 @@
         Provider Metadata <span class="text-muted" style="font-weight:400;font-size:0.75rem;">/.well-known</span>
       </button>
     </div>
+    {% if not show_config %}
+    <p class="text-muted" style="font-size:0.75rem;padding:8px 20px 0;margin:0;">
+      Configuration details are hidden. Set <code>SHOW_CONFIG=true</code> to reveal.
+    </p>
+    {% endif %}
 
     {% for p in providers %}
     {% if show_config %}

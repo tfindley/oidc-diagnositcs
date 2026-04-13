@@ -354,9 +354,27 @@
     </div>
 
     {% elif decoded and decoded.error %}
+    {% if decoded.jwe %}
+    <div class="alert alert-info" style="margin-bottom:16px;">
+      <strong>Encrypted JWT (JWE)</strong> — this token has five parts and is encrypted.
+      It cannot be decoded without the recipient's private key.
+      {% if decoded.header %}
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:0.8125rem;">Header (unencrypted)</summary>
+        <div style="margin-top:8px;font-family:var(--mono);font-size:0.75rem;background:var(--surface2);
+                    border-radius:6px;padding:10px 14px;word-break:break-all;">
+          {% for k, v in decoded.header.items() %}
+          <div><strong>{{ k }}</strong>: {{ v }}</div>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+    {% else %}
     <div class="alert alert-error">
       <strong>Decode error:</strong> {{ decoded.error }}
     </div>
+    {% endif %}
     {% else %}
     <div class="alert alert-warning">Not a valid JWT — must have three dot-separated base64url parts.</div>
     {% endif %}
@@ -414,7 +432,7 @@
     let label = token.substring(0, 12) + '…';
     let type = null;
     const _d = jwtDecode(token);
-    if (_d) {
+    if (_d && !_d.jwe) {
       const p = _d.payload;
       type = detectTokenType(_d.header, p);
       label = p.sub || p.email || p.preferred_username || p.iss || label;
@@ -422,8 +440,11 @@
         const d = new Date(p.exp * 1000);
         label += ' · exp ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
       }
+    } else if (_d && _d.jwe) {
+      type = 'JWE';
+      label = (_d.header.kid ? 'kid:' + _d.header.kid : label) + ' · encrypted';
     }
-    items.unshift({ token, label, type, exp: (_d && _d.payload.exp) || null, ts: Date.now() });
+    items.unshift({ token, label, type, exp: (_d && !_d.jwe && _d.payload.exp) || null, ts: Date.now() });
     histSave(items.slice(0, HIST_MAX));
     histRender();
   }
@@ -446,7 +467,7 @@
     if (!wrap || !list) return;
     if (!items.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
-    const TYPE_BADGE = { 'ID': 'badge-blue', 'Access': 'badge-green', 'Refresh': 'badge-yellow' };
+    const TYPE_BADGE = { 'ID': 'badge-blue', 'Access': 'badge-green', 'Refresh': 'badge-yellow', 'JWE': 'badge-purple' };
     const nowSec = Math.floor(Date.now() / 1000);
     list.innerHTML = items.map((item, idx) => {
       const age = Math.round((Date.now() - item.ts) / 60000);
@@ -492,8 +513,8 @@
   histAdd({{ token_input | tojson }});
   {% endif %}
   histRender();
-  // Re-render after bfcache restore (browser back/forward navigation)
-  window.addEventListener('pageshow', function(e) { if (e.persisted) histRender(); });
+  // Re-render on every page show (covers bfcache restore and normal navigation)
+  window.addEventListener('pageshow', histRender);
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}
@@ -544,8 +565,9 @@
   function jwtDecode(token) {
     try {
       const parts = token.trim().split('.');
-      if (parts.length !== 3) return null;
       const dec = s => JSON.parse(atob(s.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((s.length+3)%4)));
+      if (parts.length === 5) return { jwe: true, header: dec(parts[0]) };
+      if (parts.length !== 3) return null;
       return { header: dec(parts[0]), payload: dec(parts[1]) };
     } catch { return null; }
   }
@@ -564,6 +586,7 @@
 
     const parsed = jwtDecode(token);
     if (!parsed) { out.innerHTML = '<div class="alert alert-error">Token is not a valid JWT.</div>'; return; }
+    if (parsed.jwe) { out.innerHTML = '<div class="alert alert-info">This is an encrypted JWT (JWE) — signature verification is not applicable.</div>'; return; }
 
     let jwks;
     try {
@@ -671,6 +694,7 @@
     const da = jwtDecode(ta), db = jwtDecode(tb);
     if (!da) { out.innerHTML = '<div class="alert alert-error">Token A is not a valid JWT.</div>'; return; }
     if (!db) { out.innerHTML = '<div class="alert alert-error">Token B is not a valid JWT.</div>'; return; }
+    if (da.jwe || db.jwe) { out.innerHTML = '<div class="alert alert-info">One or both tokens are encrypted JWEs — diff is not applicable.</div>'; return; }
 
     const pa = da.payload, pb = db.payload;
     const keys = [...new Set([...Object.keys(pa), ...Object.keys(pb)])].sort();
