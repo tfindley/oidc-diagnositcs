@@ -195,6 +195,26 @@
     </div>
   </details>
 
+  {# ── Verify signature ── #}
+  <details class="help-toggle" style="margin-bottom:20px;" id="verify-section">
+    <summary>Verify signature (JWKS)</summary>
+    <div style="margin-top:12px;">
+      <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">JWKS URI</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+        <input id="jwks-uri" type="url" class="token-textarea"
+               style="flex:1;min-width:200px;min-height:unset;padding:6px 10px;font-size:0.8125rem;"
+               placeholder="https://provider/.well-known/jwks.json"
+               value="{{ decoded.jwks_uri if decoded and decoded.jwks_uri else jwks_uri }}">
+        <button class="btn btn-primary btn-sm" onclick="runVerify()" style="white-space:nowrap;">&#10003; Verify</button>
+      </div>
+      <p class="text-muted" style="font-size:0.75rem;margin-top:6px;">
+        Fetches the JWKS, finds the key matching the token's <code>kid</code>, and verifies the signature locally.
+        Supports RS256/384/512, PS256/384/512, ES256/384/512.
+      </p>
+      <div id="verify-result" style="margin-top:10px;"></div>
+    </div>
+  </details>
+
   {# ── Compare two tokens ── #}
   <details class="help-toggle" style="margin-bottom:20px;" id="diff-section">
     <summary>Compare two tokens</summary>
@@ -316,7 +336,7 @@
               {% for c in claims_list %}
               <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}">
                 <td>
-                  <div class="claim-key">{{ c.key }}</div>
+                  <div class="claim-key" {% if c.description %}title="{{ c.description }}"{% endif %}>{{ c.key }}</div>
                   {% if c.description %}<div class="claim-desc">{{ c.description }}</div>{% endif %}
                 </td>
                 <td class="claim-val">{{ claim_value(c) }}</td>
@@ -378,9 +398,10 @@
   }
   function detectTokenType(header, payload) {
     const typ = (header.typ || '').toLowerCase();
+    // Keycloak uses typ: "Refresh" / "Bearer" / "ID"; RFC 9068 uses "at+jwt"
     if (typ === 'refresh' || payload.token_use === 'refresh') return 'Refresh';
-    if (typ === 'at+jwt' || payload.token_use === 'access' || payload.token_type === 'Bearer') return 'Access';
-    if (payload.at_hash || payload.nonce || payload.auth_time !== undefined || payload.token_use === 'id') return 'ID';
+    if (typ === 'at+jwt' || typ === 'bearer' || payload.token_use === 'access') return 'Access';
+    if (typ === 'id' || payload.at_hash || payload.nonce || payload.auth_time !== undefined || payload.token_use === 'id') return 'ID';
     if (payload.scope) return 'Access';
     return null;
   }
@@ -524,6 +545,139 @@
       return { header: dec(parts[0]), payload: dec(parts[1]) };
     } catch { return null; }
   }
+  const CLAIM_DESCS = {{ claim_descriptions | tojson }};
+
+  // ── JWKS signature verification ──────────────────────────────────────────
+  async function runVerify() {
+    const out  = document.getElementById('verify-result');
+    const uri  = document.getElementById('jwks-uri').value.trim();
+    const token = document.querySelector('textarea[name=token]') && document.querySelector('textarea[name=token]').value.trim()
+                || {{ token_input | tojson if token_input else "''" }};
+    out.innerHTML = '<p class="text-muted" style="font-size:0.8125rem;">Verifying…</p>';
+
+    if (!uri)   { out.innerHTML = '<div class="alert alert-error">Enter a JWKS URI.</div>'; return; }
+    if (!token) { out.innerHTML = '<div class="alert alert-error">No token — paste a JWT first.</div>'; return; }
+
+    const parsed = jwtDecode(token);
+    if (!parsed) { out.innerHTML = '<div class="alert alert-error">Token is not a valid JWT.</div>'; return; }
+
+    // Fetch JWKS via server proxy to avoid CORS issues
+    let jwks;
+    try {
+      const r = await fetch('/api/discovery?url=' + encodeURIComponent(uri) + '&_raw=1');
+      // /api/discovery fetches the discovery doc — for a raw JWKS URI we fetch directly
+      const raw = await fetch(uri, { mode: 'cors' });
+      if (!raw.ok) throw new Error('HTTP ' + raw.status);
+      jwks = await raw.json();
+    } catch (e) {
+      // Fall back to server-side proxy
+      try {
+        const r = await fetch('/api/connectivity?url=' + encodeURIComponent(uri));
+        const proxy = await fetch('/api/discovery?url=' + encodeURIComponent(uri.replace(/\/jwks(\..+)?$/, '/.well-known/openid-configuration')));
+      } catch {}
+      out.innerHTML = `<div class="alert alert-error">Could not fetch JWKS: ${e.message}<br><small>If the provider blocks CORS, try fetching from a terminal: <code>curl -s ${uri}</code></small></div>`;
+      return;
+    }
+
+    const kid = parsed.header.kid;
+    const alg = parsed.header.alg || '';
+    const keys = (jwks.keys || []).filter(k =>
+      (!kid || k.kid === kid) && k.use !== 'enc' && (k.kty === 'RSA' || k.kty === 'EC' || k.kty === 'OKP')
+    );
+    if (!keys.length) {
+      const allKids = (jwks.keys || []).map(k => k.kid || '(no kid)').join(', ');
+      out.innerHTML = `<div class="alert alert-warning">No matching key found in JWKS.<br>Token kid: <code>${kid || 'none'}</code> — JWKS kids: <code>${allKids || 'none'}</code></div>`;
+      return;
+    }
+
+    // Build signing input: ASCII(base64url(header) + '.' + base64url(payload))
+    const parts = token.split('.');
+    const signingInput = new TextEncoder().encode(parts[0] + '.' + parts[1]);
+    // Decode signature
+    const sigB64 = parts[2].replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((parts[2].length+3)%4);
+    const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+
+    // Map JWT alg to Web Crypto params
+    function algParams(alg, kty) {
+      if (alg.startsWith('RS')) {
+        const hash = 'SHA-' + alg.slice(2);
+        return { import: { name:'RSASSA-PKCS1-v1_5', hash }, verify: { name:'RSASSA-PKCS1-v1_5' } };
+      }
+      if (alg.startsWith('PS')) {
+        const hash = 'SHA-' + alg.slice(2);
+        const saltLen = parseInt(alg.slice(2)) / 8;
+        return { import: { name:'RSA-PSS', hash }, verify: { name:'RSA-PSS', saltLength: saltLen } };
+      }
+      if (alg.startsWith('ES')) {
+        const bits = alg.slice(2);
+        const namedCurve = 'P-' + bits;
+        return { import: { name:'ECDSA', namedCurve }, verify: { name:'ECDSA', hash: 'SHA-' + bits } };
+      }
+      return null;
+    }
+
+    // ECDSA signatures in JWTs are IEEE P1363 (r||s), not DER — convert if needed
+    function derToP1363(der, bits) {
+      // If already the right fixed length, it's likely already P1363
+      const len = bits / 4; // bytes per component × 2
+      if (der.length === len) return der;
+      // Parse DER SEQUENCE { INTEGER r, INTEGER s }
+      try {
+        let i = 2; // skip 0x30 len
+        if (der[1] & 0x80) i += der[1] & 0x7f;
+        i++; // skip 0x02
+        const rLen = der[i++]; const rStart = i + (der[i-1+1] && der[i] === 0 ? 1 : 0);
+        // Simple approach: just try both
+        return der; // return as-is and let crypto.subtle handle it
+      } catch { return der; }
+    }
+
+    let lastErr = null;
+    for (const jwk of keys) {
+      try {
+        const params = algParams(alg || (jwk.kty === 'EC' ? 'ES256' : 'RS256'), jwk.kty);
+        if (!params) { lastErr = 'Unsupported algorithm: ' + alg; continue; }
+        const cryptoKey = await crypto.subtle.importKey('jwk', jwk, params.import, false, ['verify']);
+        let sigToVerify = sigBytes;
+        // ECDSA: convert DER → P1363 if needed
+        if (params.verify.name === 'ECDSA') {
+          const bits = parseInt((alg || 'ES256').slice(2));
+          const p1363len = bits / 4;
+          if (sigBytes.length !== p1363len && sigBytes[0] === 0x30) {
+            // DER format — parse r and s
+            let pos = 2;
+            if (sigBytes[1] & 0x80) pos += sigBytes[1] & 0x7f;
+            pos++; // 0x02
+            const rLen = sigBytes[pos++];
+            const rOff = rLen > p1363len/2 ? 1 : 0;
+            const r = sigBytes.slice(pos + rOff, pos + rLen);
+            pos += rLen; pos++; // 0x02
+            const sLen = sigBytes[pos++];
+            const sOff = sLen > p1363len/2 ? 1 : 0;
+            const s = sigBytes.slice(pos + sOff, pos + sLen);
+            sigToVerify = new Uint8Array(p1363len);
+            sigToVerify.set(r, p1363len/2 - r.length);
+            sigToVerify.set(s, p1363len - s.length);
+          }
+        }
+        const valid = await crypto.subtle.verify(params.verify, cryptoKey, sigToVerify, signingInput);
+        if (valid) {
+          out.innerHTML = `<div class="alert alert-success">
+            <strong>&#10003; Signature valid</strong> — verified with key
+            <code>${jwk.kid || '(no kid)'}</code> (${alg || 'inferred'}, ${jwk.kty})
+          </div>`;
+          return;
+        } else {
+          lastErr = 'Signature did not match key ' + (jwk.kid || '(no kid)');
+        }
+      } catch(e) { lastErr = e.message; }
+    }
+    out.innerHTML = `<div class="alert alert-error">
+      <strong>&#10005; Signature invalid</strong> — ${lastErr || 'no matching key verified the signature'}.
+      <br><small>Note: if the provider rotates keys frequently, the signing key may no longer be in the JWKS.</small>
+    </div>`;
+  }
+
   function fmtVal(v) {
     if (v === null || v === undefined) return '—';
     if (typeof v === 'object') return JSON.stringify(v);
@@ -552,8 +706,9 @@
                   : !inB ? '<span class="badge badge-red">A only</span>'
                   : differs ? '<span class="badge badge-yellow">&#9888; differs</span>'
                   : '<span class="badge badge-green">same</span>';
+      const desc = CLAIM_DESCS[k] ? ` title="${CLAIM_DESCS[k]}"` : '';
       html += `<tr class="${cls}">
-        <td><span class="claim-key">${k}</span></td>
+        <td><span class="claim-key"${desc}>${k}</span>${CLAIM_DESCS[k] ? `<div class="claim-desc">${CLAIM_DESCS[k]}</div>` : ''}</td>
         <td style="font-family:var(--mono);font-size:0.8125rem;word-break:break-all;">${inA ? va : '<span class="text-muted">—</span>'}</td>
         <td style="font-family:var(--mono);font-size:0.8125rem;word-break:break-all;">${inB ? vb : '<span class="text-muted">—</span>'}</td>
         <td>${badge}</td></tr>`;

@@ -54,20 +54,21 @@
 
 /* ── Connectivity rows ── */
 .conn-row {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 9px 14px; border-bottom: 1px solid var(--border);
   font-size: 0.8125rem; min-width: 0;
 }
 .conn-row:last-child { border-bottom: none; }
 .conn-label  { flex: 1; min-width: 0; }
-.conn-status {
-  font-size: 0.75rem; font-weight: 600;
-  word-break: break-word;
-}
+.conn-status { font-size: 0.75rem; font-weight: 600; flex-shrink: 0; }
 .conn-ok     { color: var(--green); }
 .conn-err    { color: var(--red); }
 .conn-pending{ color: var(--muted); }
 .conn-latency{ font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
+.conn-err-detail {
+  flex-basis: 100%; font-size: 0.7rem; font-family: var(--mono);
+  color: var(--muted); word-break: break-all; padding: 2px 0 4px;
+}
 
 /* ── Provider metadata (discovery) ── */
 .disc-field { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
@@ -247,11 +248,13 @@
       <span class="conn-label">Browser &#8594; Provider</span>
       <span class="conn-status conn-pending conn-brw">— click Check</span>
     </div>
-    <div style="padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:8px;">
+    <div style="padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-ghost btn-sm"
               onclick="checkConnectivity(this.closest('.card'))">
         &#8635; Check connectivity
       </button>
+      <a href="{{ url_for('conformance') }}?provider={{ p.id }}&run=1"
+         class="btn btn-ghost btn-sm" style="margin-left:auto;">&#10003; Conformance</a>
     </div>
   </div>
   {% endfor %}
@@ -337,6 +340,10 @@
               onclick="checkConnectivity(this.closest('.card'))">
         &#8635; Check
       </button>
+      {% if providers %}
+      <a href="{{ url_for('conformance') }}?provider={{ providers[0].id }}&run=1"
+         class="btn btn-ghost btn-sm">&#10003; Conformance</a>
+      {% endif %}
     </div>
     <div class="conn-row">
       <span class="conn-label">App server &#8594; OIDC provider</span>
@@ -409,27 +416,32 @@ function checkConnectivity(card) {
   const serverEl  = card.querySelector('.conn-srv');
   const browserEl = card.querySelector('.conn-brw');
 
-  // Clear latency spans from previous run
-  card.querySelectorAll('.conn-latency').forEach(el => el.remove());
+  // Clear previous results
+  card.querySelectorAll('.conn-latency, .conn-err-detail').forEach(el => el.remove());
   serverEl.textContent  = '⟳ checking…';
   browserEl.textContent = '⟳ checking…';
   serverEl.className  = 'conn-status conn-pending conn-srv';
   browserEl.className = 'conn-status conn-pending conn-brw';
 
+  function connOk(el, ms, cls) {
+    el.textContent = '✓ reachable';
+    el.className = 'conn-status conn-ok ' + cls;
+    el.insertAdjacentHTML('afterend', ` <span class="conn-latency">${ms}ms</span>`);
+  }
+  function connErr(el, msg, cls) {
+    el.textContent = '✗ unreachable';
+    el.className = 'conn-status conn-err ' + cls;
+    el.insertAdjacentHTML('afterend', `<span class="conn-err-detail">${msg}</span>`);
+  }
+
   // Server-side check (proxied through app)
   fetch('/api/connectivity?url=' + encodeURIComponent(discoveryUrl))
     .then(r => r.json())
     .then(data => {
-      if (data.status === 'ok') {
-        serverEl.textContent = '✓ reachable';
-        serverEl.className = 'conn-status conn-ok conn-srv';
-        serverEl.insertAdjacentHTML('afterend', ` <span class="conn-latency">${data.latency_ms}ms</span>`);
-      } else {
-        serverEl.textContent = '✗ ' + (data.message || 'error');
-        serverEl.className = 'conn-status conn-err conn-srv';
-      }
+      if (data.status === 'ok') connOk(serverEl, data.latency_ms, 'conn-srv');
+      else connErr(serverEl, data.message || 'error', 'conn-srv');
     })
-    .catch(e => { serverEl.textContent = '✗ ' + e; serverEl.className = 'conn-status conn-err conn-srv'; });
+    .catch(e => connErr(serverEl, String(e), 'conn-srv'));
 
   // Browser-side direct fetch
   if (!discoveryUrl) {
@@ -440,15 +452,9 @@ function checkConnectivity(card) {
   fetch(discoveryUrl, { method: 'GET', mode: 'cors' })
     .then(r => {
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const ms = Date.now() - t0;
-      browserEl.textContent = '✓ reachable';
-      browserEl.className = 'conn-status conn-ok conn-brw';
-      browserEl.insertAdjacentHTML('afterend', ` <span class="conn-latency">${ms}ms</span>`);
+      connOk(browserEl, Date.now() - t0, 'conn-brw');
     })
-    .catch(e => {
-      browserEl.textContent = '✗ ' + e.message;
-      browserEl.className = 'conn-status conn-err conn-brw';
-    });
+    .catch(e => connErr(browserEl, e.message, 'conn-brw'));
 }
 
 // ── Discovery loader for a specific card ───────────────────────────────────
@@ -508,8 +514,13 @@ async function loadDiscovery(card) {
 
 // ── Provider detail panel (multi-provider) ────────────────────────────────
 {% if multi_provider %}
-let _detailProvider = {{ (providers[0].id if providers else '') | tojson }};
+let _detailProvider = {{ (signed_in_provider or (providers[0].id if providers else '')) | tojson }};
 let _detailTab      = {{ ('config' if show_config else 'meta') | tojson }};
+// Sync the dropdown to the pre-selected provider
+(function() {
+  const sel = document.getElementById('detail-sel');
+  if (sel) sel.value = _detailProvider;
+})();
 
 function detailSetProvider(id) {
   _detailProvider = id;

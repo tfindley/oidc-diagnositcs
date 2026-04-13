@@ -532,6 +532,9 @@ def claims():
 
     unconfigured_scopes = session.get('unconfigured_scopes', [])
 
+    provider     = _get_provider(session.get('provider_id', ''), default=PROVIDERS[0] if PROVIDERS else {})
+    discovery_url = provider.get('discovery_url', '')
+
     return render_template('claims.html',
         username=session.get('user'),
         id_token_claims=prepare_claims(id_payload),
@@ -548,6 +551,8 @@ def claims():
         login_duration=session.get('login_duration'),
         scope_analysis=scope_analysis,
         unconfigured_scopes=unconfigured_scopes,
+        discovery_url=discovery_url,
+        access_token=raw_tokens.get('access_token', ''),
     )
 
 
@@ -609,15 +614,30 @@ def decode_tool():
     decoded     = None
     claims_list = None
     token_input = request.form.get('token', '').strip()
+    # Try to pre-fill JWKS URI from the current session's provider discovery doc
+    jwks_uri = request.form.get('jwks_uri', '').strip()
+    if not jwks_uri and session.get('provider_id'):
+        provider = _get_provider(session['provider_id'])
+        if provider and provider.get('discovery_url'):
+            try:
+                disc = http_requests.get(provider['discovery_url'], timeout=5).json()
+                jwks_uri = disc.get('jwks_uri', '')
+            except Exception:
+                pass
+
     if token_input:
         decoded = decode_jwt(token_input)
         if decoded and not decoded.get('error'):
             claims_list = prepare_claims(decoded.get('payload', {}))
+            if jwks_uri:
+                decoded['jwks_uri'] = jwks_uri
     return render_template('decode.html',
         token_input=token_input,
         decoded=decoded,
         claims_list=claims_list,
         now=int(time.time()),
+        claim_descriptions=CLAIM_DESCRIPTIONS,
+        jwks_uri=jwks_uri,
     )
 
 

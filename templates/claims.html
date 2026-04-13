@@ -72,6 +72,12 @@
   {% endif %}
 
   <div style="flex:1"></div>
+  {% if access_token %}
+  <button class="btn btn-ghost btn-sm" id="curl-btn"
+          onclick="copyCurl()" title="Copy curl command for UserInfo endpoint">
+    &#x2398; Copy as curl
+  </button>
+  {% endif %}
 </div>
 
 {# ── Scope analysis strip ── #}
@@ -377,6 +383,29 @@
       }
     }, 1000);
   })();
+  {% endif %}
+
+  // ── Copy as curl ─────────────────────────────────────────────────────────
+  {% if access_token and discovery_url %}
+  async function copyCurl() {
+    const btn = document.getElementById('curl-btn');
+    let userinfo = null;
+    try {
+      const resp = await fetch('/api/discovery?url=' + encodeURIComponent({{ discovery_url | tojson }}));
+      const data = await resp.json();
+      userinfo = data.userinfo_endpoint || null;
+    } catch {}
+    const token = {{ access_token | tojson }};
+    const cmd = userinfo
+      ? `curl -s -H "Authorization: Bearer ${token}" ${userinfo}`
+      : `curl -s -H "Authorization: Bearer ${token}" <userinfo_endpoint>`;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      if (btn) { const orig = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => btn.textContent = orig, 1500); }
+    } catch {
+      prompt('Copy this curl command:', cmd);
+    }
+  }
   {% endif %}
 </script>
 {% endblock %}

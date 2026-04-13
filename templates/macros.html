@@ -45,7 +45,7 @@
       <tr class="claim-row" data-search="{{ c.key }} {{ c.value | string | lower }}"
           data-scope="{{ c.scope }}">
         <td>
-          <div class="claim-key">
+          <div class="claim-key" {% if c.description %}title="{{ c.description }}"{% endif %}>
             {{ c.key }}
             {%- if c.scope and c.scope != 'openid' %}
             <span class="scope-badge">{{ c.scope }}</span>
