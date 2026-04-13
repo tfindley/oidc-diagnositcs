@@ -36,12 +36,16 @@
 .summary-tile .tile-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
 
 /* Check rows */
+.conf-table-wrap { overflow-x: auto; }
 .conf-table td { vertical-align: top; padding: 10px 14px; }
 .conf-table td:first-child { width: 90px; }
 .conf-table td:last-child  { width: 140px; color: var(--muted); font-size: 0.75rem; }
 .check-name   { font-size: 0.875rem; font-weight: 500; margin-bottom: 2px; }
 .check-detail { font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
 .check-detail code { font-size: 0.75rem; }
+@media (max-width: 640px) {
+  .conf-table td:last-child { display: none; }
+}
 
 /* Provider selector */
 .provider-selector {
@@ -138,7 +142,7 @@
         <span class="badge badge-green">{{ cat_pass }} pass</span>
       </span>
     </div>
-    <div style="padding:0;">
+    <div class="conf-table-wrap" style="padding:0;">
       <table class="conf-table" style="width:100%;border-collapse:collapse;">
         <tbody>
           {% for check in checks %}

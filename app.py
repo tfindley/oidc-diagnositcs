@@ -266,6 +266,18 @@ def decode_jwt(token: str) -> dict:
     if not token:
         return {}
     parts = token.split('.')
+    if len(parts) == 5:
+        # JWE (encrypted JWT) — cannot be decoded without the recipient's private key
+        try:
+            header = json.loads(_b64_decode(parts[0]))
+        except Exception:
+            header = {}
+        return {
+            'error': 'This is an encrypted JWT (JWE). It cannot be decoded without the recipient\'s private key.',
+            'jwe': True,
+            'header': header,
+            'raw': token,
+        }
     if len(parts) != 3:
         return {'error': 'Not a JWT (opaque token)', 'raw': token}
     try:

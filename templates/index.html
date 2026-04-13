@@ -36,9 +36,11 @@
 /* ── Provider cards grid (multi-provider) ── */
 .providers-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 20px;
   margin-bottom: 20px;
+}
+@media (max-width: 640px) {
+  .providers-grid { grid-template-columns: 1fr !important; }
 }
 .provider-card.is-active { border-left: 3px solid var(--green); }
 
@@ -188,7 +190,15 @@
 
 {# ── Multi-provider: one card per provider with connectivity + metadata ── #}
 {% if multi_provider %}
-<div class="providers-grid">
+{% set _n = providers | length %}
+{% if _n == 2 %}{% set _cols = 2 %}
+{% elif _n == 3 %}{% set _cols = 3 %}
+{% elif _n == 4 %}{% set _cols = 2 %}
+{% elif _n >= 10 %}{% set _cols = 4 %}
+{% elif _n >= 5 %}{% set _cols = 3 %}
+{% else %}{% set _cols = 1 %}
+{% endif %}
+<div class="providers-grid" style="grid-template-columns: repeat({{ _cols }}, 1fr);">
   {% for p in providers %}
   <div class="card provider-card {{ 'is-active' if p.id == signed_in_provider else '' }}"
        data-discovery-url="{{ p.discovery_url }}"
@@ -224,8 +234,10 @@
     <div style="padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-ghost btn-sm"
               onclick="checkConnectivity(this.closest('.card'))">
-        &#8635; Check connectivity
+        &#8635; Check
       </button>
+      <a href="{{ url_for('providers_page') }}?provider={{ p.id }}"
+         class="btn btn-ghost btn-sm">Details</a>
       <a href="{{ url_for('conformance') }}?provider={{ p.id }}&run=1"
          class="btn btn-ghost btn-sm" style="margin-left:auto;">&#10003; Conformance</a>
     </div>
