@@ -25,6 +25,10 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 
 ---
 
+![alt text](demos/oidc-diagnostic-demo.webp)
+
+---
+
 ## Quickstart with Docker
 
 The fastest way to run the tool is with the pre-built image from GitHub Container Registry.

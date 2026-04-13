@@ -353,6 +353,8 @@ def index():
         user=session.get('user'),
         providers=PROVIDERS,
         multi_provider=MULTI_PROVIDER,
+        signed_in_provider=session.get('provider_id'),
+        signed_in_user=session.get('user'),
         config={
             'discovery_url':    first.get('discovery_url', OIDC_DISCOVERY_URL),
             'client_id':        first.get('client_id', OIDC_CLIENT_ID),
