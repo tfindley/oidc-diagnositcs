@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}About — OIDC Diagnostics{% endblock %}
+
+{% block extra_css %}
+.about-wrap { max-width: 760px; margin: 0 auto; }
+.about-section { margin-bottom: 28px; }
+.about-section h2 {
+  font-size: 1rem; font-weight: 600; margin-bottom: 12px;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.stack-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
+}
+.stack-item {
+  padding: 12px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface);
+}
+.stack-item .stack-name { font-weight: 600; font-size: 0.875rem; margin-bottom: 2px; }
+.stack-item .stack-desc { font-size: 0.8125rem; color: var(--muted); }
+.config-table td:first-child { width: 200px; font-family: var(--mono); font-size: 0.8125rem; }
+.config-table td:last-child  { font-size: 0.8125rem; }
+{% endblock %}
+
+{% block content %}
+<div class="about-wrap">
+  <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">About</h1>
+  <p class="text-muted" style="margin-bottom:28px;font-size:0.875rem;">
+    OIDC Diagnostic Tool — an open-source SSO diagnostic client for Keycloak, Kanidm, and
+    any OpenID Connect-compliant provider.
+  </p>
+
+  {# ── Links ── #}
+  <div class="about-section">
+    <h2>Links</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <a href="{{ github_url }}" target="_blank" rel="noopener"
+         class="btn btn-primary">&#128279; Source Code (GitHub)</a>
+      {% if kofi_url %}
+      <a href="{{ kofi_url }}" target="_blank" rel="noopener"
+         class="btn btn-ghost">&#9749; Support on Ko-fi</a>
+      {% endif %}
+      <a href="{{ url_for('reference') }}" class="btn btn-ghost">&#128196; Reference Docs</a>
+    </div>
+    <p class="text-muted" style="font-size:0.75rem;margin-top:10px;">
+      Licensed under the GNU Affero General Public License v3 (AGPL-3.0).
+      Modifications and deployments must make source available under the same licence.
+    </p>
+  </div>
+
+  {# ── Technology Stack ── #}
+  <div class="about-section">
+    <h2>Technology Stack</h2>
+    <div class="stack-grid">
+      <div class="stack-item">
+        <div class="stack-name">Python 3 + Flask</div>
+        <div class="stack-desc">Web framework — server-rendered Jinja2 templates, no frontend build step</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-name">Authlib</div>
+        <div class="stack-desc">OAuth 2.0 and OpenID Connect client library — handles the authorisation code flow and PKCE</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-name">Jinja2</div>
+        <div class="stack-desc">Templating engine for server-side HTML rendering</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-name">Vanilla CSS + JS</div>
+        <div class="stack-desc">No npm, no webpack, no frameworks — pure CSS variables, CSS grid, and browser-native APIs</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-name">Web Crypto API</div>
+        <div class="stack-desc">Browser-native cryptography for JWT signature verification (RS/PS/ES families)</div>
+      </div>
+      <div class="stack-item">
+        <div class="stack-name">Docker</div>
+        <div class="stack-desc">Container packaging for easy self-hosted deployment</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;padding:16px 20px;background:var(--surface2);">
+      <p style="font-size:0.875rem;margin:0;">
+        Built with <strong>Claude Code</strong> — Anthropic's AI coding assistant —
+        using <strong>claude-sonnet-4-6</strong> (Claude Sonnet 4.6).
+        The UI, backend, and OIDC diagnostic logic were developed iteratively through
+        AI-assisted pair programming.
+      </p>
+    </div>
+  </div>
+
+  {# ── Build Info ── #}
+  <div class="about-section">
+    <h2>Build</h2>
+    <table class="config-table">
+      <tbody>
+        <tr>
+          <td>Build date</td>
+          <td>
+            {% if build_date == 'development' %}
+            <span class="badge badge-yellow">development</span>
+            {% else %}
+            {{ build_date }}
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>Flask debug</td>
+          <td>
+            {% if flask_debug %}
+            <span class="badge badge-red">enabled</span>
+            {% else %}
+            <span class="badge badge-green">disabled</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" style="font-size:0.75rem;margin-top:8px;">
+      To set a build date in Docker: <code>docker build --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) .</code>
+      and add <code>ARG BUILD_DATE</code> / <code>ENV BUILD_DATE=$BUILD_DATE</code> to your Dockerfile.
+    </p>
+  </div>
+
+  {# ── Configuration ── #}
+  <div class="about-section">
+    <h2>Instance Configuration</h2>
+    <table class="config-table">
+      <tbody>
+        <tr>
+          <td>Mode</td>
+          <td>
+            {% if nav_multi_provider %}
+            <span class="badge badge-blue">Multi-provider</span>
+            {{ nav_providers | length }} provider{{ 's' if nav_providers | length != 1 else '' }} configured
+            {% else %}
+            <span class="badge badge-blue">Single-provider</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>SHOW_CONFIG</td>
+          <td>
+            {% if show_config %}
+            <span class="badge badge-green">true</span> — provider details visible
+            {% else %}
+            <span class="badge badge-gray">false</span> — provider details hidden
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>PRIVACY_NOTICE</td>
+          <td>
+            {% if privacy_notice %}
+            <span class="badge badge-green">true</span> — notice shown on landing page
+            {% else %}
+            <span class="badge badge-gray">false</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>BANNER_TEXT</td>
+          <td>
+            {% if banner_text %}
+            <span class="badge badge-{{ banner_type }}">{{ banner_type }}</span>
+            <span class="text-muted" style="font-size:0.8125rem;">{{ banner_text }}</span>
+            {% else %}
+            <span class="text-muted">not set</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="text-muted" style="font-size:0.75rem;margin-top:8px;">
+      All configuration is set via environment variables in <code>.env</code>.
+      See <a href="{{ github_url }}" target="_blank" rel="noopener">the README</a> for full documentation.
+    </p>
+  </div>
+
+</div>
+{% endblock %}
