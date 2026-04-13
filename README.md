@@ -312,3 +312,16 @@ This is the same trust model as any OAuth2 confidential client. Users should onl
 
 **Recommended for a quick public demo:** Google is the easiest to set up (15 minutes, no server, free) and has the widest reach — any visitor can test with their existing Google account. Set `OIDC_SCOPE=openid email profile`, request only the scopes you need, and set `PRIVACY_NOTICE=true`.
 
+## License
+
+AGPL
+
+## Author Information
+
+**Tristan Findley**
+
+Find out more about me [here](https://tfindley.co.uk).
+
+If you're fan of my work and would like to show your support:
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tfindley)
