@@ -561,20 +561,12 @@
     const parsed = jwtDecode(token);
     if (!parsed) { out.innerHTML = '<div class="alert alert-error">Token is not a valid JWT.</div>'; return; }
 
-    // Fetch JWKS via server proxy to avoid CORS issues
     let jwks;
     try {
-      const r = await fetch('/api/discovery?url=' + encodeURIComponent(uri) + '&_raw=1');
-      // /api/discovery fetches the discovery doc — for a raw JWKS URI we fetch directly
       const raw = await fetch(uri, { mode: 'cors' });
       if (!raw.ok) throw new Error('HTTP ' + raw.status);
       jwks = await raw.json();
     } catch (e) {
-      // Fall back to server-side proxy
-      try {
-        const r = await fetch('/api/connectivity?url=' + encodeURIComponent(uri));
-        const proxy = await fetch('/api/discovery?url=' + encodeURIComponent(uri.replace(/\/jwks(\..+)?$/, '/.well-known/openid-configuration')));
-      } catch {}
       out.innerHTML = `<div class="alert alert-error">Could not fetch JWKS: ${e.message}<br><small>If the provider blocks CORS, try fetching from a terminal: <code>curl -s ${uri}</code></small></div>`;
       return;
     }
@@ -614,22 +606,6 @@
         return { import: { name:'ECDSA', namedCurve }, verify: { name:'ECDSA', hash: 'SHA-' + bits } };
       }
       return null;
-    }
-
-    // ECDSA signatures in JWTs are IEEE P1363 (r||s), not DER — convert if needed
-    function derToP1363(der, bits) {
-      // If already the right fixed length, it's likely already P1363
-      const len = bits / 4; // bytes per component × 2
-      if (der.length === len) return der;
-      // Parse DER SEQUENCE { INTEGER r, INTEGER s }
-      try {
-        let i = 2; // skip 0x30 len
-        if (der[1] & 0x80) i += der[1] & 0x7f;
-        i++; // skip 0x02
-        const rLen = der[i++]; const rStart = i + (der[i-1+1] && der[i] === 0 ? 1 : 0);
-        // Simple approach: just try both
-        return der; // return as-is and let crypto.subtle handle it
-      } catch { return der; }
     }
 
     let lastErr = null;

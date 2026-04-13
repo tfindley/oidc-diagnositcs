@@ -11,6 +11,7 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 
 - **Five-tab claims view** — ID Token · Access Token · UserInfo · Compare · Raw JWT
 - **Compare tab** — shows every unique claim key across all three sources and flags ⚠ where the same claim has different values
+- **Claim descriptions** — hover over any claim key to see a plain-English description of what it means
 - **Scope labelling** — each claim is badged with the OIDC scope that defines it; filter by scope with one click
 - **Empty-scope warnings** — highlights scopes that were granted but returned no claims
 - **Live search** — filter claims by name or value instantly
@@ -18,15 +19,19 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 - **Token expiry countdown** — live timer in the nav bar and claims header
 - **Token refresh** — refresh the access token without signing out (requires `offline_access` scope)
 - **Copy buttons** — per-claim copy and full JSON export
+- **Copy as curl** — one-click button that builds a ready-to-run `curl` command for the UserInfo endpoint using your current access token
 
 ### JWT decoder
 
 - **Standalone decoder** — paste any token and decode it without logging in
 - **Token visualiser** — colour-coded header · payload · signature display
+- **Token type detection** — automatically labels tokens as ID, Access, or Refresh based on header `typ` and payload claims (supports Keycloak, RFC 9068, and standard OIDC conventions)
+- **Claim descriptions** — hover over any claim key for a plain-English description; also shown in the token diff table
 - **Expiry warning** — immediately flags tokens whose `exp` has passed
-- **Token timeline** — visual bar showing `iat` → now → `exp`, with remaining time or expiry age
-- **Decode history** — last 5 decoded tokens stored in browser `localStorage` with quick-restore
-- **Token diff** — paste two JWTs and compare their claims side by side; highlights added, removed, and changed claims
+- **Token timeline** — visual bar showing `iat` → now → `exp`, with remaining time or expiry age; updates live every second
+- **JWKS signature verification** — paste a JWKS URI (auto-filled when signed in) and verify the token's signature locally using the Web Crypto API; supports RS256/384/512, PS256/384/512, ES256/384/512
+- **Decode history** — last 5 decoded tokens stored in browser `localStorage`; each entry shows token type badge and colour-coded expiry status (valid / expiring soon / expired); one-click restore or send directly to the Token A / Token B compare slots; Clear all button
+- **Token diff** — paste two JWTs and compare their claims side by side; highlights added, removed, and changed claims; includes claim descriptions
 - **How to get a JWT** — expandable guide covering DevTools, `curl`, Bearer headers, and Keycloak admin console
 
 ### Conformance & security analysis
@@ -35,18 +40,21 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 - **Security analysis** — checks for: `none` algorithm, HMAC signing keys, HTTPS on all endpoints, PKCE S256 support, `plain` PKCE, and algorithm strength (EC/PSS preferred over RSA PKCS#1 v1.5)
 - **Token claim validation** — when signed in, validates `iss`, `aud`, `sub`, `exp`, `iat`, issuer match, and audience match against the configured client ID
 - **RFC references** — every check cites the relevant specification (OIDC Core 1.0, RFC 8725, RFC 7636, RFC 9700, etc.)
+- **Quick launch** — each provider card on the home page has a direct Conformance link that runs the check immediately
 
 ### Multi-provider mode
 
-- **Provider cards** — each provider gets its own card with connectivity check and provider metadata
+- **Provider cards** — each provider gets its own card with connectivity check and a direct Conformance link
 - **Signed-in state** — the active provider card shows the signed-in username with Refresh, Sign out, and Claims buttons; inactive cards show Sign in
-- **SHOW_CONFIG in multi-provider** — when `SHOW_CONFIG=true`, each provider card has a collapsible Configuration section showing that provider's discovery URL, client ID (masked), scopes, PKCE method, and callback URL
+- **Provider Details panel** — a shared tabbed panel below the provider grid shows Configuration and Provider Metadata (`.well-known/openid-configuration`) for the selected provider; auto-selects the currently signed-in provider on load
+- **SHOW_CONFIG in multi-provider** — when `SHOW_CONFIG=true`, the Provider Details panel shows each provider's discovery URL, client ID (click to reveal), scopes, PKCE method, and callback URL
+- **Connectivity diagnostics** — each card shows whether the app server and browser can reach the provider; full error text is displayed inline for unreachable providers
 - **Scope analysis** — shows which scopes were granted and highlights any that returned no claims
 
 ### UI
 
 - **Dark mode** — full dark theme toggle in the nav bar; respects `prefers-color-scheme` by default, persisted to `localStorage`
-- **Connectivity checker** — checks both the app server and your browser can reach the OIDC provider
+- **Connectivity checker** — checks both the app server and your browser can reach the OIDC provider; displays latency (ms) on success or full error detail on failure
 - **Provider discovery viewer** — fetches and displays the `.well-known/openid-configuration`, with your current PKCE method and signing algorithm highlighted
 - **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported
 - **PKCE S256** — enabled by default; required by Kanidm, recommended everywhere

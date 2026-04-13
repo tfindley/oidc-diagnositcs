@@ -614,21 +614,20 @@ def decode_tool():
     decoded     = None
     claims_list = None
     token_input = request.form.get('token', '').strip()
-    # Try to pre-fill JWKS URI from the current session's provider discovery doc
     jwks_uri = request.form.get('jwks_uri', '').strip()
-    if not jwks_uri and session.get('provider_id'):
-        provider = _get_provider(session['provider_id'])
-        if provider and provider.get('discovery_url'):
-            try:
-                disc = http_requests.get(provider['discovery_url'], timeout=5).json()
-                jwks_uri = disc.get('jwks_uri', '')
-            except Exception:
-                pass
-
     if token_input:
         decoded = decode_jwt(token_input)
         if decoded and not decoded.get('error'):
             claims_list = prepare_claims(decoded.get('payload', {}))
+            # Pre-fill JWKS URI from the session provider's discovery doc if not supplied
+            if not jwks_uri and session.get('provider_id'):
+                provider = _get_provider(session['provider_id'])
+                if provider and provider.get('discovery_url'):
+                    try:
+                        disc = http_requests.get(provider['discovery_url'], timeout=5).json()
+                        jwks_uri = disc.get('jwks_uri', '')
+                    except Exception:
+                        pass
             if jwks_uri:
                 decoded['jwks_uri'] = jwks_uri
     return render_template('decode.html',
