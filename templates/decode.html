@@ -397,8 +397,10 @@
     try { localStorage.setItem(HIST_KEY, JSON.stringify(items)); } catch {}
   }
   function detectTokenType(header, payload) {
-    const typ = (header.typ || '').toLowerCase();
-    // Keycloak uses typ: "Refresh" / "Bearer" / "ID"; RFC 9068 uses "at+jwt"
+    // Keycloak stores the distinguishing value in payload.typ ("ID"/"Bearer"/"Refresh"),
+    // not in header.typ (which is always "JWT"). Check payload first, fall back to header
+    // for RFC 9068 access tokens ("at+jwt") and other standards.
+    const typ = ((payload.typ || header.typ) || '').toLowerCase();
     if (typ === 'refresh' || payload.token_use === 'refresh') return 'Refresh';
     if (typ === 'at+jwt' || typ === 'bearer' || payload.token_use === 'access') return 'Access';
     if (typ === 'id' || payload.at_hash || payload.nonce || payload.auth_time !== undefined || payload.token_use === 'id') return 'ID';
@@ -490,6 +492,8 @@
   histAdd({{ token_input | tojson }});
   {% endif %}
   histRender();
+  // Re-render after bfcache restore (browser back/forward navigation)
+  window.addEventListener('pageshow', function(e) { if (e.persisted) histRender(); });
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}

@@ -249,6 +249,8 @@ def inject_globals():
         'flask_debug':     app.debug,
         'nav_expires_at':  raw.get('expires_at') if raw else None,
         'nav_has_refresh': bool(raw.get('refresh_token')) if raw else False,
+        'nav_providers':   PROVIDERS,
+        'nav_multi_provider': MULTI_PROVIDER,
     }
 
 
@@ -918,6 +920,23 @@ def run_conformance_checks(provider_id: str) -> dict:
     counts = dict(Counter(c['status'] for c in checks))
 
     return {'provider': provider, 'checks': checks, 'counts': counts, 'latency_ms': latency_ms}
+
+
+@app.route('/providers')
+def providers_page():
+    """Provider details page — configuration and .well-known metadata."""
+    selected = request.args.get('provider', '')
+    if not selected and session.get('provider_id'):
+        selected = session['provider_id']
+    elif not selected and PROVIDERS:
+        selected = PROVIDERS[0]['id']
+    return render_template('providers.html',
+        providers=PROVIDERS,
+        multi_provider=MULTI_PROVIDER,
+        show_config=SHOW_CONFIG,
+        signed_in_provider=session.get('provider_id'),
+        selected_provider=selected,
+    )
 
 
 @app.route('/conformance')
