@@ -73,7 +73,6 @@ if BANNER_TYPE not in {'info', 'warning', 'error', 'success'}:
     BANNER_TYPE = 'info'
 GITHUB_URL      = 'https://github.com/tfindley/oidc-diagnositcs'
 KOFI_URL        = 'https://ko-fi.com/tfindley'
-BUILD_DATE      = os.environ.get('BUILD_DATE', 'development')
 
 # ── Multi-provider configuration ──────────────────────────────────────────────
 # If providers.yml is present it overrides the single-provider env var config.
@@ -252,7 +251,7 @@ def inject_globals():
         'nav_has_refresh': bool(raw.get('refresh_token')) if raw else False,
         'nav_providers':   PROVIDERS,
         'nav_multi_provider': MULTI_PROVIDER,
-        'build_date':      BUILD_DATE,
+
     }
 
 
@@ -957,7 +956,7 @@ def providers_page():
 def reference():
     """Reference documentation page — connectivity, scopes, OIDC flow, privacy."""
     tab = request.args.get('tab', 'connectivity')
-    if tab not in {'connectivity', 'scopes', 'flow', 'privacy'}:
+    if tab not in {'connectivity', 'scopes', 'flow', 'federated', 'privacy'}:
         tab = 'connectivity'
     return render_template('reference.html', active_tab=tab)
 

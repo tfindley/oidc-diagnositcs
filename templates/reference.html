@@ -42,6 +42,7 @@
         <button class="tab-btn{% if active_tab == 'connectivity' %} active{% endif %}" data-tab="connectivity">Connectivity</button>
         <button class="tab-btn{% if active_tab == 'scopes' %} active{% endif %}"       data-tab="scopes">Scopes &amp; Claims</button>
         <button class="tab-btn{% if active_tab == 'flow' %} active{% endif %}"         data-tab="flow">OIDC Flow</button>
+        <button class="tab-btn{% if active_tab == 'federated' %} active{% endif %}"   data-tab="federated">Federated Flow</button>
         <button class="tab-btn{% if active_tab == 'privacy' %} active{% endif %}"      data-tab="privacy">Data &amp; Privacy</button>
       </div>
     </div>
@@ -157,6 +158,91 @@
         is useless without it — this is the security benefit of PKCE. Token signing (ES256/RS256) lets
         the app verify tokens were issued by the expected server without a back-channel call.
       </p>
+    </div>
+
+    {# ── Federated OIDC Flow ── #}
+    <div class="tab-panel{% if active_tab == 'federated' %} active{% endif %}" data-panel="federated"
+         style="padding:20px;">
+      <p class="text-muted">
+        In a <strong>federated identity</strong> scenario your local SSO server does not hold user accounts
+        directly — instead it acts as a <em>proxy identity provider</em>, forwarding authentication
+        requests to one or more upstream identity federations. From this application's perspective the
+        flow looks identical to a direct OIDC login; the extra hops happen invisibly behind the
+        local SSO server.
+      </p>
+
+      <h4>Parties involved</h4>
+      <div class="flow-diagram" style="margin:16px 0;">
+        <div class="flow-box flow-browser">&#128100; Browser</div>
+        <div class="flow-arrows">
+          <div class="flow-arrow">&#8594; Sends user to <code>/authorize</code> on the <strong>local SSO server</strong></div>
+          <div class="flow-arrow">&#8594; Local SSO shows a provider-selection screen (if multiple federations are configured)</div>
+          <div class="flow-arrow">&#8594; Redirected to the <strong>upstream federation hub</strong> to authenticate</div>
+          <div class="flow-arrow">&#8594; Redirected back to local SSO with a federation assertion</div>
+          <div class="flow-arrow">&#8594; Local SSO exchanges the assertion for its own tokens, redirects to <code>/callback</code></div>
+        </div>
+        <div class="flow-box flow-app">&#128187; This App (service provider)</div>
+        <div class="flow-arrows">
+          <div class="flow-arrow">&#8594; Receives tokens issued <em>by the local SSO server</em> — not by the upstream federation</div>
+          <div class="flow-arrow">&#8594; <code>iss</code> claim will be the local SSO server's issuer URL</div>
+          <div class="flow-arrow">&#8594; <code>sub</code> may be a local identifier, a scoped identifier, or a federation persistent ID depending on configuration</div>
+        </div>
+        <div class="flow-box flow-sso">&#128274; Local SSO Server <span class="text-muted" style="font-weight:400;">(proxy IdP)</span></div>
+        <div class="flow-arrows">
+          <div class="flow-arrow">&#8594; Authenticates outbound via SAML 2.0 or OIDC to the federation hub</div>
+          <div class="flow-arrow">&#8594; Maps federation attributes to local OIDC claims</div>
+        </div>
+        <div class="flow-box flow-sso" style="opacity:0.7;">&#127760; Upstream Federation Hub <span class="text-muted" style="font-weight:400;">(eduGAIN, national research &amp; education network, etc.)</span></div>
+      </div>
+
+      <h4>What this means for your tokens</h4>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead><tr><th style="width:160px">Claim</th><th>Typical behaviour in federated login</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>iss</code></td>
+              <td>Always the <strong>local SSO server</strong> — never the upstream federation. The proxy rewrites the issuer.</td>
+            </tr>
+            <tr>
+              <td><code>sub</code></td>
+              <td>May be a local UUID, a scoped persistent ID (e.g. <code>user@home-institution.example</code>), or a federation-assigned <em>ePTID</em> depending on attribute mapping configuration.</td>
+            </tr>
+            <tr>
+              <td><code>email</code></td>
+              <td>Sourced from the home institution via the federation. May be absent if the home institution does not release it.</td>
+            </tr>
+            <tr>
+              <td><code>acr</code></td>
+              <td>Authentication context from the upstream IdP, translated by the local SSO. May reflect MFA level or a federation-defined assurance profile (e.g. <em>Assurance Profile Low/High</em>).</td>
+            </tr>
+            <tr>
+              <td>Federation attributes</td>
+              <td>Home-institution attributes (affiliation, entitlements, schac fields) are mapped to OIDC claims by the local SSO. Which claims appear depends entirely on the attribute-release policy at the home institution and the local SSO's mapper configuration.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Common diagnostic issues</h4>
+      <div class="alert alert-info" style="margin-bottom:12px;">
+        <strong>Missing claims after federated login?</strong> The home institution controls which
+        attributes it releases to the federation. If <code>email</code>, <code>given_name</code>, or
+        other expected claims are absent, the attribute-release policy at the home institution needs
+        to be updated — this cannot be fixed at the local SSO or service-provider level.
+      </div>
+      <div class="alert alert-info" style="margin-bottom:12px;">
+        <strong>Unexpected <code>sub</code> value?</strong> Federated logins often produce a
+        <em>pairwise</em> or <em>persistent</em> subject identifier derived from the user's home
+        identity rather than a local account ID. This is by design and ensures the service provider
+        cannot correlate the user across different federation members.
+      </div>
+      <div class="alert alert-warning">
+        <strong>Callback URL registration.</strong> The local SSO server's OIDC client registration
+        must include this tool's <code>/callback</code> URL. For multi-provider deployments, each
+        provider has its own callback path (<code>/callback/&lt;provider_id&gt;</code>). Check the
+        OIDC Flow tab for the full callback sequence.
+      </div>
     </div>
 
     {# ── Data & Privacy ── #}
