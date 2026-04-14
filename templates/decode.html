@@ -406,39 +406,77 @@
     });
   }
 
-  // ── History ──────────────────────────────────────────────────────────────────
-  const HIST_KEY = 'oidc_decode_history';
-  const HIST_MAX = 5;
-  let _histCache = null;
+  // ── History (IndexedDB) ──────────────────────────────────────────────────────
+  // IndexedDB is transactional and async — it has no stale-read issues and works
+  // reliably in all browsers regardless of privacy settings or navigation mode.
+  const HIST_DB_NAME = 'oidc_decoder';
+  const HIST_DB_VER  = 1;
+  const HIST_STORE   = 'history';
+  const HIST_MAX     = 5;
 
-  function histInit() {
-    // Try sessionStorage first — in-memory per-tab, always fresh within a session
+  function _histDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(HIST_DB_NAME, HIST_DB_VER);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(HIST_STORE))
+          db.createObjectStore(HIST_STORE, { keyPath: 'ts' });
+      };
+      req.onsuccess = e => resolve(e.target.result);
+      req.onerror   = () => reject(req.error);
+    });
+  }
+  async function _histAll() {
     try {
-      const ss = sessionStorage.getItem(HIST_KEY);
-      if (ss) { _histCache = JSON.parse(ss); return; }
+      const db = await _histDB();
+      const items = await new Promise((resolve, reject) => {
+        const tx  = db.transaction(HIST_STORE, 'readonly');
+        const req = tx.objectStore(HIST_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror   = () => resolve([]);
+      });
+      return items
+        .filter(i => i && typeof i.token === 'string')
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, HIST_MAX);
+    } catch { return []; }
+  }
+  async function _histPut(item) {
+    try {
+      const db = await _histDB();
+      const tx  = db.transaction(HIST_STORE, 'readwrite');
+      tx.objectStore(HIST_STORE).put(item);
+      return new Promise(r => { tx.oncomplete = tx.onerror = r; });
     } catch {}
-    // localStorage: write-before-read forces sync on browsers with lazy storage init.
-    // This is why histAdd() (which writes first) always works while read-only paths fail.
+  }
+  async function _histDel(ts) {
     try {
-      const raw = localStorage.getItem(HIST_KEY) || '[]';
-      localStorage.setItem(HIST_KEY, raw);                    // force sync
-      const items = JSON.parse(localStorage.getItem(HIST_KEY));
-      _histCache = Array.isArray(items) ? items : [];
-      if (_histCache.length > 0) {
-        try { sessionStorage.setItem(HIST_KEY, JSON.stringify(_histCache)); } catch {}
-      }
-    } catch { _histCache = []; }
+      const db = await _histDB();
+      const tx  = db.transaction(HIST_STORE, 'readwrite');
+      tx.objectStore(HIST_STORE).delete(ts);
+      return new Promise(r => { tx.oncomplete = tx.onerror = r; });
+    } catch {}
   }
-  function histLoad() {
-    if (_histCache === null) histInit();
-    return _histCache;
+  async function _histTrim() {
+    try {
+      const db  = await _histDB();
+      const all = await new Promise(resolve => {
+        const tx  = db.transaction(HIST_STORE, 'readonly');
+        const req = tx.objectStore(HIST_STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror   = () => resolve([]);
+      });
+      if (all.length <= HIST_MAX) return;
+      all.sort((a, b) => a.ts - b.ts);           // oldest first
+      const excess = all.slice(0, all.length - HIST_MAX);
+      const db2 = await _histDB();
+      const tx  = db2.transaction(HIST_STORE, 'readwrite');
+      const st  = tx.objectStore(HIST_STORE);
+      excess.forEach(i => st.delete(i.ts));
+      return new Promise(r => { tx.oncomplete = tx.onerror = r; });
+    } catch {}
   }
-  function histSave(items) {
-    _histCache = items;
-    const json = JSON.stringify(items);
-    try { sessionStorage.setItem(HIST_KEY, json); } catch {}
-    try { localStorage.setItem(HIST_KEY, json); } catch {}
-  }
+
   function detectTokenType(header, payload) {
     // Keycloak stores the distinguishing value in payload.typ ("ID"/"Bearer"/"Refresh"),
     // not in header.typ (which is always "JWT"). Check payload first, fall back to header
@@ -451,83 +489,93 @@
     return null;
   }
 
-  function histAdd(token) {
+  async function histAdd(token) {
     if (!token) return;
-    let items = histLoad().filter(i => i.token !== token);
+    // Remove duplicate entry for this token if it exists
+    const existing = await _histAll();
+    const dup = existing.find(i => i.token === token);
+    if (dup) await _histDel(dup.ts);
+    // Build display metadata
     let label = token.substring(0, 12) + '…';
-    let type = null;
-    const _d = jwtDecode(token);
+    let type  = null;
+    const _d  = jwtDecode(token);
     if (_d && !_d.jwe) {
       const p = _d.payload;
-      type = detectTokenType(_d.header, p);
+      type  = detectTokenType(_d.header, p);
       label = p.sub || p.email || p.preferred_username || p.iss || label;
       if (p.exp) {
         const d = new Date(p.exp * 1000);
         label += ' · exp ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
       }
     } else if (_d && _d.jwe) {
-      type = 'JWE';
+      type  = 'JWE';
       label = (_d.header.kid ? 'kid:' + _d.header.kid : label) + ' · encrypted';
     }
-    items.unshift({ token, label, type, exp: (_d && !_d.jwe && _d.payload.exp) || null, ts: Date.now() });
-    histSave(items.slice(0, HIST_MAX));
-    histRender();
+    const exp = (_d && !_d.jwe && _d.payload.exp) || null;
+    await _histPut({ token, label, type, exp, ts: Date.now() });
+    await _histTrim();
+    await histRender();
   }
-  function histDelete(idx) {
-    const items = histLoad();
-    items.splice(idx, 1);
-    histSave(items);
-    histRender();
+  async function histDelete(ts) {
+    await _histDel(ts);
+    await histRender();
   }
-  function histClear() {
-    histSave([]);
-    histRender();
+  async function histClear() {
+    try {
+      const db = await _histDB();
+      const tx = db.transaction(HIST_STORE, 'readwrite');
+      tx.objectStore(HIST_STORE).clear();
+      await new Promise(r => { tx.oncomplete = tx.onerror = r; });
+    } catch {}
+    await histRender();
   }
+
   const CURRENT_TOKEN = {{ token_input | tojson if token_input else 'null' }};
 
-  function histRender() {
-    const items = histLoad().filter(i => i && typeof i.token === 'string');
-    const list = document.getElementById('history-list');
+  async function histRender() {
+    const items = await _histAll();
+    const list  = document.getElementById('history-list');
     if (!list) return;
-    const empty = document.getElementById('history-empty');
     if (!items.length) {
       list.innerHTML = '<li id="history-empty" class="text-muted" style="font-size:0.8125rem;padding:4px 0;">No history yet.</li>';
       return;
     }
-    if (empty) empty.remove();
     const TYPE_BADGE = { 'ID': 'badge-blue', 'Access': 'badge-green', 'Refresh': 'badge-yellow', 'JWE': 'badge-purple' };
     const nowSec = Math.floor(Date.now() / 1000);
-    list.innerHTML = items.map((item, idx) => {
-      const age = item.ts ? Math.round((Date.now() - item.ts) / 60000) : null;
-      const ageStr = age === null ? '' : age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
-      const isCurrent = item.token === CURRENT_TOKEN;
-      const typeBadge = item.type ? `<span class="badge ${TYPE_BADGE[item.type] || 'badge-gray'}" style="font-size:0.65rem;padding:1px 5px;margin-right:2px;">${item.type}</span>` : '';
-      let expiryChip = '';
+    list.innerHTML = items.map(item => {
+      const age     = item.ts ? Math.round((Date.now() - item.ts) / 60000) : null;
+      const ageStr  = age === null ? '' : age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
+      const isCurrent  = item.token === CURRENT_TOKEN;
+      const typeBadge  = item.type ? `<span class="badge ${TYPE_BADGE[item.type] || 'badge-gray'}" style="font-size:0.65rem;padding:1px 5px;margin-right:2px;">${item.type}</span>` : '';
+      let expiryChip   = '';
       if (item.exp) {
         const secsLeft = item.exp - nowSec;
-        if (secsLeft < 0)    expiryChip = '<span class="chip chip-bad"  style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">expired</span>';
+        if (secsLeft < 0)        expiryChip = '<span class="chip chip-bad"  style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">expired</span>';
         else if (secsLeft < 300) expiryChip = '<span class="chip chip-warn" style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">exp soon</span>';
-        else                 expiryChip = '<span class="chip chip-ok"   style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">valid</span>';
+        else                     expiryChip = '<span class="chip chip-ok"   style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">valid</span>';
       }
       const preview = item.token.substring(0, 40);
+      // Use item.ts as the stable key for all operations (not array index)
       return `<li class="history-item${isCurrent ? ' h-current' : ''}" title="${preview}…">
-        <span class="h-label" ${isCurrent ? '' : `onclick="histUse(${idx})"`}
+        <span class="h-label" ${isCurrent ? '' : `onclick="histUse(${item.ts})"`}
               style="${isCurrent ? 'cursor:default;opacity:0.6;' : ''}">${typeBadge}${item.label || preview}${expiryChip}</span>
         ${isCurrent ? '<span class="h-meta" style="color:var(--primary);font-weight:600;">current</span>' : `<span class="h-meta">${ageStr}</span>`}
-        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'a')" title="Load into Token A">→ A</button>
-        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'b')" title="Load into Token B">→ B</button>
-        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${idx})" title="Remove">&#10005;</button>
+        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${item.ts},'a')" title="Load into Token A">→ A</button>
+        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${item.ts},'b')" title="Load into Token B">→ B</button>
+        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${item.ts})" title="Remove">&#10005;</button>
       </li>`;
     }).join('');
   }
-  function histUse(idx) {
-    const item = histLoad()[idx];
+  async function histUse(ts) {
+    const items = await _histAll();
+    const item  = items.find(i => i.ts === ts);
     if (!item || item.token === CURRENT_TOKEN) return;
     document.querySelector('textarea[name=token]').value = item.token;
     document.querySelector('form').submit();
   }
-  function histToSlot(idx, slot) {
-    const item = histLoad()[idx];
+  async function histToSlot(ts, slot) {
+    const items = await _histAll();
+    const item  = items.find(i => i.ts === ts);
     if (!item) return;
     const el = document.getElementById('diff-' + slot);
     if (!el) return;
@@ -538,16 +586,13 @@
   }
 
   // ── Initialization ────────────────────────────────────────────────────────────
-  histInit();  // populate cache (write-before-read); DOM is ready — script is at end of body
   {% if token_input and decoded and not decoded.get('error') %}
-  histAdd({{ token_input | tojson }});  // POST path — also calls histRender()
+  histAdd({{ token_input | tojson }});   // POST path — adds to DB then renders
   {% else %}
-  histRender();  // GET path — synchronous, cache already populated above
+  histRender();                          // GET path — reads from DB and renders
   {% endif %}
-  // bfcache restores only: page thawed from memory, re-init cache in case storage changed
-  window.addEventListener('pageshow', (e) => {
-    if (e.persisted) { _histCache = null; histInit(); histRender(); }
-  });
+  // Re-render on bfcache restore (page thawed from memory)
+  window.addEventListener('pageshow', (e) => { if (e.persisted) histRender(); });
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}
