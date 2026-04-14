@@ -33,7 +33,7 @@
 <div class="ref-wrap">
   <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">Reference</h1>
   <p class="text-muted" style="margin-bottom:20px;font-size:0.875rem;">
-    Documentation on OIDC connectivity, scopes, the authorisation code flow, and data handling.
+    Documentation on OIDC connectivity, scopes, the authorisation code flow, identity brokering, and data handling.
   </p>
 
   <div class="card" id="ref-tabs">
@@ -42,7 +42,7 @@
         <button class="tab-btn{% if active_tab == 'connectivity' %} active{% endif %}" data-tab="connectivity">Connectivity</button>
         <button class="tab-btn{% if active_tab == 'scopes' %} active{% endif %}"       data-tab="scopes">Scopes &amp; Claims</button>
         <button class="tab-btn{% if active_tab == 'flow' %} active{% endif %}"         data-tab="flow">OIDC Flow</button>
-        <button class="tab-btn{% if active_tab == 'federated' %} active{% endif %}"   data-tab="federated">Federated Flow</button>
+        <button class="tab-btn{% if active_tab == 'brokering' or active_tab == 'federated' %} active{% endif %}" data-tab="brokering">Identity Brokering</button>
         <button class="tab-btn{% if active_tab == 'privacy' %} active{% endif %}"      data-tab="privacy">Data &amp; Privacy</button>
       </div>
     </div>
@@ -160,65 +160,89 @@
       </p>
     </div>
 
-    {# ── Federated OIDC Flow ── #}
-    <div class="tab-panel{% if active_tab == 'federated' %} active{% endif %}" data-panel="federated"
+    {# ── Identity Brokering ── #}
+    <div class="tab-panel{% if active_tab == 'brokering' or active_tab == 'federated' %} active{% endif %}" data-panel="brokering"
          style="padding:20px;">
       <p class="text-muted">
-        In a <strong>federated identity</strong> scenario your local SSO server does not hold user accounts
-        directly — instead it acts as a <em>proxy identity provider</em>, forwarding authentication
-        requests to one or more upstream identity federations. From this application's perspective the
-        flow looks identical to a direct OIDC login; the extra hops happen invisibly behind the
-        local SSO server.
+        <strong>Identity brokering</strong> is when your SSO server (e.g. Keycloak) does not authenticate
+        the user directly — instead it delegates to an <em>upstream identity provider</em> such as
+        Microsoft Entra ID, Google, GitHub, or another OIDC/SAML server. Keycloak acts as the
+        <em>broker</em>: it handles the upstream authentication, maps the upstream claims to its own
+        local claims, then issues its own tokens to this application. From this app's perspective the
+        flow looks like a normal OIDC login; the upstream hops happen entirely behind Keycloak.
       </p>
 
-      <h4>Parties involved</h4>
-      <div class="flow-diagram" style="margin:16px 0;">
-        <div class="flow-box flow-browser">&#128100; Browser</div>
-        <div class="flow-arrows">
-          <div class="flow-arrow">&#8594; Sends user to <code>/authorize</code> on the <strong>local SSO server</strong></div>
-          <div class="flow-arrow">&#8594; Local SSO shows a provider-selection screen (if multiple federations are configured)</div>
-          <div class="flow-arrow">&#8594; Redirected to the <strong>upstream federation hub</strong> to authenticate</div>
-          <div class="flow-arrow">&#8594; Redirected back to local SSO with a federation assertion</div>
-          <div class="flow-arrow">&#8594; Local SSO exchanges the assertion for its own tokens, redirects to <code>/callback</code></div>
-        </div>
-        <div class="flow-box flow-app">&#128187; This App (service provider)</div>
-        <div class="flow-arrows">
-          <div class="flow-arrow">&#8594; Receives tokens issued <em>by the local SSO server</em> — not by the upstream federation</div>
-          <div class="flow-arrow">&#8594; <code>iss</code> claim will be the local SSO server's issuer URL</div>
-          <div class="flow-arrow">&#8594; <code>sub</code> may be a local identifier, a scoped identifier, or a federation persistent ID depending on configuration</div>
-        </div>
-        <div class="flow-box flow-sso">&#128274; Local SSO Server <span class="text-muted" style="font-weight:400;">(proxy IdP)</span></div>
-        <div class="flow-arrows">
-          <div class="flow-arrow">&#8594; Authenticates outbound via SAML 2.0 or OIDC to the federation hub</div>
-          <div class="flow-arrow">&#8594; Maps federation attributes to local OIDC claims</div>
-        </div>
-        <div class="flow-box flow-sso" style="opacity:0.7;">&#127760; Upstream Federation Hub <span class="text-muted" style="font-weight:400;">(eduGAIN, national research &amp; education network, etc.)</span></div>
-      </div>
+      <h4>Full flow</h4>
+      <pre class="oidc-flow-diagram">Browser             This App            Keycloak (Broker)   Upstream IdP
+  │                     │                      │                   │
+  │  GET /login          │                      │                   │
+  │ ────────────────────►│                      │                   │
+  │                      │ Generate PKCE        │                   │
+  │  302 → /authorize    │                      │                   │
+  │◄────────────────────-│                      │                   │
+  │                      │                      │                   │
+  │  GET /authorize      │                      │                   │
+  │ ──────────────────────────────────────────►│                   │
+  │                      │                      │ Show IdP picker   │
+  │  User selects IdP    │                      │◄──────────────── │
+  │◄──────────────────────────────────────────-│                   │
+  │                      │                      │                   │
+  │  302 → upstream /authorize                  │                   │
+  │ ──────────────────────────────────────────────────────────────►│
+  │                      │                      │  Show login UI    │
+  │  User authenticates  │                      │                  │◄─────
+  │◄──────────────────────────────────────────────────────────────-│
+  │                      │                      │                   │
+  │  302 → Keycloak callback with auth code     │                   │
+  │ ──────────────────────────────────────────►│                   │
+  │                      │                      │ Exchange code     │
+  │                      │                      │──────────────────►│
+  │                      │                      │  id_token,        │
+  │                      │                      │  access_token     │
+  │                      │                      │◄──────────────────│
+  │                      │                      │ Map claims        │
+  │                      │                      │ Issue local tokens│
+  │  302 → /callback?code=...                   │                   │
+  │◄──────────────────────────────────────────-│                   │
+  │                      │                      │                   │
+  │  GET /callback?code=...                     │                   │
+  │ ────────────────────►│                      │                   │
+  │                      │ POST /token          │                   │
+  │                      │─────────────────────►│                   │
+  │                      │  access_token,       │                   │
+  │                      │  id_token,           │                   │
+  │                      │  refresh_token       │                   │
+  │                      │◄─────────────────────│                   │
+  │                      │ GET /userinfo        │                   │
+  │                      │─────────────────────►│                   │
+  │                      │◄─────────────────────│                   │
+  │  302 → /claims       │                      │                   │
+  │◄────────────────────-│                      │                   │</pre>
 
       <h4>What this means for your tokens</h4>
       <div class="table-wrap" style="margin-bottom:16px;">
         <table>
-          <thead><tr><th style="width:160px">Claim</th><th>Typical behaviour in federated login</th></tr></thead>
+          <thead><tr><th style="width:160px">Claim</th><th>Behaviour with identity brokering</th></tr></thead>
           <tbody>
             <tr>
               <td><code>iss</code></td>
-              <td>Always the <strong>local SSO server</strong> — never the upstream federation. The proxy rewrites the issuer.</td>
+              <td>Always <strong>Keycloak's issuer URL</strong> — never the upstream IdP. The broker rewrites the issuer before issuing tokens to this app.</td>
             </tr>
             <tr>
               <td><code>sub</code></td>
-              <td>May be a local UUID, a scoped persistent ID (e.g. <code>user@home-institution.example</code>), or a federation-assigned <em>ePTID</em> depending on attribute mapping configuration.</td>
+              <td>A Keycloak-assigned identifier for the brokered user — not the upstream IdP's subject. Keycloak may create a local account linked to the upstream identity, or use a derived persistent ID depending on broker configuration.</td>
             </tr>
             <tr>
-              <td><code>email</code></td>
-              <td>Sourced from the home institution via the federation. May be absent if the home institution does not release it.</td>
+              <td><code>email</code>, <code>name</code></td>
+              <td>Sourced from the upstream IdP via Keycloak's claim mappers. May be absent if the upstream IdP does not release them or the mapper is not configured.</td>
             </tr>
             <tr>
               <td><code>acr</code></td>
-              <td>Authentication context from the upstream IdP, translated by the local SSO. May reflect MFA level or a federation-defined assurance profile (e.g. <em>Assurance Profile Low/High</em>).</td>
+              <td>Authentication context as reported by Keycloak. May reflect the upstream IdP's MFA level if Keycloak is configured to pass it through.</td>
             </tr>
             <tr>
-              <td>Federation attributes</td>
-              <td>Home-institution attributes (affiliation, entitlements, schac fields) are mapped to OIDC claims by the local SSO. Which claims appear depends entirely on the attribute-release policy at the home institution and the local SSO's mapper configuration.</td>
+              <td>Upstream attributes</td>
+              <td>Any upstream IdP claims you want visible here must be explicitly mapped in Keycloak's identity provider mapper configuration. Unmapped claims are silently discarded.</td>
             </tr>
           </tbody>
         </table>
@@ -226,22 +250,21 @@
 
       <h4>Common diagnostic issues</h4>
       <div class="alert alert-info" style="margin-bottom:12px;">
-        <strong>Missing claims after federated login?</strong> The home institution controls which
-        attributes it releases to the federation. If <code>email</code>, <code>given_name</code>, or
-        other expected claims are absent, the attribute-release policy at the home institution needs
-        to be updated — this cannot be fixed at the local SSO or service-provider level.
+        <strong>Missing claims after brokered login?</strong> Check two places: (1) whether the
+        upstream IdP is releasing the claim to Keycloak, and (2) whether Keycloak has an identity
+        provider mapper configured to forward it into the local token. Both must be in place — a
+        claim released by the upstream IdP but not mapped in Keycloak will not appear here.
       </div>
       <div class="alert alert-info" style="margin-bottom:12px;">
-        <strong>Unexpected <code>sub</code> value?</strong> Federated logins often produce a
-        <em>pairwise</em> or <em>persistent</em> subject identifier derived from the user's home
-        identity rather than a local account ID. This is by design and ensures the service provider
-        cannot correlate the user across different federation members.
+        <strong>Unexpected <code>sub</code> value?</strong> Keycloak assigns its own local subject
+        identifier to brokered users. The upstream IdP's subject is not directly exposed unless you
+        explicitly add an identity provider attribute mapper for it.
       </div>
       <div class="alert alert-warning">
-        <strong>Callback URL registration.</strong> The local SSO server's OIDC client registration
-        must include this tool's <code>/callback</code> URL. For multi-provider deployments, each
-        provider has its own callback path (<code>/callback/&lt;provider_id&gt;</code>). Check the
-        OIDC Flow tab for the full callback sequence.
+        <strong>Callback URL registration.</strong> Keycloak's OIDC client for this app must include
+        this tool's <code>/callback</code> URL as a valid redirect URI. For multi-provider deployments,
+        each provider has its own path (<code>/callback/&lt;provider_id&gt;</code>). Check the OIDC
+        Flow tab for the full callback sequence.
       </div>
     </div>
 

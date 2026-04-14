@@ -16,22 +16,6 @@
 .jwt-visual { word-break: break-all; line-height: 1.9; }
 .btn-toggle-on { background: #eaedfd; color: var(--primary); border-color: #c5cdf9; }
 
-/* History */
-.history-list { list-style: none; display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-.history-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px; border-radius: 6px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface2);
-  font-size: 0.8125rem; transition: background .1s;
-}
-.history-item:hover { background: var(--bg); }
-.history-item .h-label { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.history-item .h-meta  { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
-.history-item .h-del    { color: var(--muted); font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; }
-.history-item .h-del:hover { background: var(--bg); color: var(--red); }
-.history-item .h-slot  { color: var(--muted); font-size: 0.7rem; padding: 2px 5px; border-radius: 4px; }
-.history-item .h-slot:hover { background: var(--bg); color: var(--primary); }
-
 /* Token timeline */
 .timeline-wrap { margin: 16px 0 4px; }
 .timeline-bar {
@@ -118,16 +102,6 @@
           <button type="button" class="btn btn-ghost" id="paste-btn">&#x2398; Paste from clipboard</button>
         </div>
       </form>
-      {# ── Recently Decoded (rendered by JS from window.name — no server storage) ── #}
-      <div id="history-wrap" style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-size:0.75rem;color:var(--muted);font-weight:600;">Recently decoded</span>
-          <button class="btn btn-ghost btn-xs" onclick="histClear()" style="font-size:0.7rem;padding:2px 6px;">Clear all</button>
-        </div>
-        <ul class="history-list" id="history-list">
-          <li class="text-muted" style="font-size:0.8125rem;padding:4px 0;">No history yet.</li>
-        </ul>
-      </div>
     </div>
   </div>
 
@@ -388,11 +362,21 @@
 <script>
   // ── Paste button ────────────────────────────────────────────────────────────
   document.getElementById('paste-btn').addEventListener('click', async () => {
-    try {
-      document.querySelector('textarea[name=token]').value = await navigator.clipboard.readText();
-    } catch {
-      alert('Clipboard access denied — paste manually.');
+    const ta  = document.querySelector('textarea[name=token]');
+    const btn = document.getElementById('paste-btn');
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      try {
+        ta.value = await navigator.clipboard.readText();
+        ta.focus();
+        return;
+      } catch { /* permission denied or unavailable — fall through */ }
     }
+    // Clipboard read API not available or denied (requires HTTPS + explicit permission).
+    // Focus the textarea so the user can paste with Ctrl+V / ⌘V.
+    ta.focus();
+    const orig = btn.innerHTML;
+    btn.innerHTML = 'Press Ctrl+V / &#8984;V to paste';
+    setTimeout(() => { btn.innerHTML = orig; }, 2500);
   });
 
   // ── Claim search ────────────────────────────────────────────────────────────
@@ -406,125 +390,6 @@
     });
   }
 
-  // ── History (window.name — browser tab memory, no server/disk storage) ───────
-  // window.name persists across same-tab page navigations and is cleared when the
-  // tab closes. It never touches disk, the server, or any browser storage API.
-  const HIST_KEY = 'oidc_decode_history';
-  const HIST_MAX = 5;
-
-  function _histData() {
-    try {
-      const d = JSON.parse(window.name || '{}');
-      return (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
-    } catch { return {}; }
-  }
-  function histLoad() {
-    const items = _histData()[HIST_KEY];
-    return Array.isArray(items) ? items.filter(i => i && typeof i.token === 'string') : [];
-  }
-  function histSave(items) {
-    try { const d = _histData(); d[HIST_KEY] = items; window.name = JSON.stringify(d); } catch {}
-  }
-
-  function detectTokenType(header, payload) {
-    const typ = ((payload.typ || header.typ) || '').toLowerCase();
-    if (typ === 'refresh' || payload.token_use === 'refresh') return 'Refresh';
-    if (typ === 'at+jwt' || typ === 'bearer' || payload.token_use === 'access') return 'Access';
-    if (typ === 'id' || payload.at_hash || payload.nonce || payload.auth_time !== undefined || payload.token_use === 'id') return 'ID';
-    if (payload.scope) return 'Access';
-    return null;
-  }
-
-  function histAdd(token) {
-    if (!token) return;
-    let items = histLoad().filter(i => i.token !== token);
-    let label = token.substring(0, 12) + '…';
-    let type  = null;
-    const _d  = jwtDecode(token);
-    if (_d && !_d.jwe) {
-      const p = _d.payload;
-      type  = detectTokenType(_d.header, p);
-      label = p.sub || p.email || p.preferred_username || p.iss || label;
-      if (p.exp) {
-        const d = new Date(p.exp * 1000);
-        label += ' · exp ' + d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-      }
-    } else if (_d && _d.jwe) {
-      type  = 'JWE';
-      label = (_d.header.kid ? 'kid:' + _d.header.kid : label) + ' · encrypted';
-    }
-    items.unshift({ token, label, type, exp: (_d && !_d.jwe && _d.payload.exp) || null, ts: Date.now() });
-    histSave(items.slice(0, HIST_MAX));
-    histRender();
-  }
-  function histDelete(idx) {
-    const items = histLoad();
-    items.splice(idx, 1);
-    histSave(items);
-    histRender();
-  }
-  function histClear() {
-    histSave([]);
-    histRender();
-  }
-
-  const CURRENT_TOKEN = {{ token_input | tojson if token_input else 'null' }};
-
-  function histRender() {
-    const items = histLoad();
-    const list  = document.getElementById('history-list');
-    if (!list) return;
-    if (!items.length) {
-      list.innerHTML = '<li class="text-muted" style="font-size:0.8125rem;padding:4px 0;">No history yet.</li>';
-      return;
-    }
-    const TYPE_BADGE = { 'ID': 'badge-blue', 'Access': 'badge-green', 'Refresh': 'badge-yellow', 'JWE': 'badge-purple' };
-    const nowSec = Math.floor(Date.now() / 1000);
-    list.innerHTML = items.map((item, idx) => {
-      const age        = item.ts ? Math.round((Date.now() - item.ts) / 60000) : null;
-      const ageStr     = age === null ? '' : age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
-      const isCurrent  = item.token === CURRENT_TOKEN;
-      const typeBadge  = item.type ? `<span class="badge ${TYPE_BADGE[item.type] || 'badge-gray'}" style="font-size:0.65rem;padding:1px 5px;margin-right:2px;">${item.type}</span>` : '';
-      let expiryChip   = '';
-      if (item.exp) {
-        const secsLeft = item.exp - nowSec;
-        if (secsLeft < 0)        expiryChip = '<span class="chip chip-bad"  style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">expired</span>';
-        else if (secsLeft < 300) expiryChip = '<span class="chip chip-warn" style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">exp soon</span>';
-        else                     expiryChip = '<span class="chip chip-ok"   style="font-size:0.65rem;padding:1px 5px;border-radius:3px;margin-left:4px;">valid</span>';
-      }
-      const preview = item.token.substring(0, 40);
-      return `<li class="history-item${isCurrent ? ' h-current' : ''}" title="${preview}…">
-        <span class="h-label" ${isCurrent ? '' : `onclick="histUse(${idx})"`}
-              style="${isCurrent ? 'cursor:default;opacity:0.6;' : ''}">${typeBadge}${item.label || preview}${expiryChip}</span>
-        ${isCurrent ? '<span class="h-meta" style="color:var(--primary);font-weight:600;">current</span>' : `<span class="h-meta">${ageStr}</span>`}
-        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'a')" title="Load into Token A">→ A</button>
-        <button class="btn btn-xs btn-ghost h-slot" onclick="histToSlot(${idx},'b')" title="Load into Token B">→ B</button>
-        <button class="h-del btn btn-xs btn-ghost" onclick="histDelete(${idx})" title="Remove">&#10005;</button>
-      </li>`;
-    }).join('');
-  }
-  function histUse(idx) {
-    const item = histLoad()[idx];
-    if (!item || item.token === CURRENT_TOKEN) return;
-    document.querySelector('textarea[name=token]').value = item.token;
-    document.querySelector('form').submit();
-  }
-  function histToSlot(idx, slot) {
-    const item = histLoad()[idx];
-    if (!item) return;
-    const el = document.getElementById('diff-' + slot);
-    if (!el) return;
-    el.value = item.token;
-    const section = document.getElementById('diff-section');
-    if (section && !section.open) section.open = true;
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
-  {% if token_input and decoded and not decoded.get('error') %}
-  histAdd({{ token_input | tojson }});
-  {% else %}
-  histRender();
-  {% endif %}
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}

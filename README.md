@@ -3,7 +3,27 @@
 A lightweight web application that acts as an OIDC client for diagnosing SSO systems. Log in via your provider (Keycloak, Kanidm, Authentik, Entra ID, Okta, etc.) and inspect every claim from the ID token, access token, and UserInfo endpoint side by side.
 
 ## Disclaimer
+
 This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. [CLAUDE.md](CLAUDE.md) is included for reference.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | Python 3.11+ |
+| Web framework | [Flask](https://flask.palletsprojects.com/) ≥ 3.0 |
+| OIDC / OAuth2 | [Authlib](https://docs.authlib.org/) ≥ 1.3 |
+| Cryptography | [cryptography](https://cryptography.io/) ≥ 42.0 (JWT key parsing) |
+| HTTP client | [Requests](https://requests.readthedocs.io/) ≥ 2.31 |
+| Multi-provider config | [PyYAML](https://pyyaml.org/) ≥ 6.0 |
+| WSGI server | [Gunicorn](https://gunicorn.org/) ≥ 22.0 |
+| Templating | [Jinja2](https://jinja.palletsprojects.com/) (bundled with Flask) |
+| Frontend | Vanilla CSS + Vanilla JS — no framework, no build step |
+| JWT verification (browser) | Web Crypto API — RS/PS/ES family signature verification entirely in-browser |
+
+---
 
 ## Features
 
@@ -30,7 +50,6 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 - **Expiry warning** — immediately flags tokens whose `exp` has passed
 - **Token timeline** — visual bar showing `iat` → now → `exp`, with remaining time or expiry age; updates live every second
 - **JWKS signature verification** — paste a JWKS URI (auto-filled when signed in) and verify the token's signature locally using the Web Crypto API; supports RS256/384/512, PS256/384/512, ES256/384/512
-- **Decode history** — last 5 decoded tokens stored in browser `localStorage`; each entry shows token type badge and colour-coded expiry status (valid / expiring soon / expired); one-click restore or send directly to the Token A / Token B compare slots; Clear all button
 - **Token diff** — paste two JWTs and compare their claims side by side; highlights added, removed, and changed claims; includes claim descriptions
 - **How to get a JWT** — expandable guide covering DevTools, `curl`, Bearer headers, and Keycloak admin console
 
@@ -59,7 +78,7 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 - **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported
 - **PKCE S256** — enabled by default; required by Kanidm, recommended everywhere
 - **ES256 / RS256** — configurable token signing algorithm enforcement
-- **Help menu** — connectivity guide, scope reference, and OIDC flow diagram
+- **Reference page** — built-in documentation covering connectivity, scopes, the OIDC flow, identity brokering (Keycloak as broker to upstream IdPs), and data & privacy
 
 ---
 
@@ -320,16 +339,34 @@ This is the same trust model as any OAuth2 confidential client. Users should onl
 
 **Recommended for a quick public demo:** Google is the easiest to set up (15 minutes, no server, free) and has the widest reach — any visitor can test with their existing Google account. Set `OIDC_SCOPE=openid email profile`, request only the scopes you need, and set `PRIVACY_NOTICE=true`.
 
+---
+
+## Development Cost
+
+This tool was developed with Claude Code (Claude Sonnet 4.6) over approximately **6 days** (9–15 April 2026), through multiple sessions covering full feature implementations, architectural pivots, and thorough testing and debugging cycles.
+
+| Metric | Estimate |
+| --- | --- |
+| Development time | ~6 days |
+| Total tokens processed | ~12–15 million |
+| Estimated AI API credit spend | ~$40–60 USD |
+
+Token and cost estimates are approximate; prompt caching (active within sessions) means the dollar figure likely understates the raw token volume. This is not a vibe-coded prototype — it reflects sustained, iterative development with multiple rewrites and refinement cycles to reach the current state.
+
+---
+
 ## License
 
 AGPL
 
+---
+
 ## Author Information
 
-**Tristan Findley**
+### Tristan Findley
 
-Find out more about me [here](https://tfindley.co.uk).
+Find out more at [tfindley.co.uk](https://tfindley.co.uk).
 
-If you're fan of my work and would like to show your support:
+If you're a fan of my work and would like to show your support:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tfindley)
