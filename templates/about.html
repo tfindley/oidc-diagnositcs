@@ -92,16 +92,6 @@
     <table class="config-table">
       <tbody>
         <tr>
-          <td>Build date</td>
-          <td>
-            {% if build_date == 'development' %}
-            <span class="badge badge-yellow">development</span>
-            {% else %}
-            {{ build_date }}
-            {% endif %}
-          </td>
-        </tr>
-        <tr>
           <td>Flask debug</td>
           <td>
             {% if flask_debug %}
@@ -113,10 +103,6 @@
         </tr>
       </tbody>
     </table>
-    <p class="text-muted" style="font-size:0.75rem;margin-top:8px;">
-      To set a build date in Docker: <code>docker build --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) .</code>
-      and add <code>ARG BUILD_DATE</code> / <code>ENV BUILD_DATE=$BUILD_DATE</code> to your Dockerfile.
-    </p>
   </div>
 
   {# ── Configuration ── #}
