@@ -406,20 +406,35 @@
     });
   }
 
-  // ── History (sessionStorage + localStorage) ────────────────────────────────
+  // ── History ──────────────────────────────────────────────────────────────────
   const HIST_KEY = 'oidc_decode_history';
   const HIST_MAX = 5;
+  let _histCache = null;
 
-  function histLoad() {
-    // sessionStorage is in-memory per-tab — always fresh for within-session navigation
+  function histInit() {
+    // Try sessionStorage first — in-memory per-tab, always fresh within a session
     try {
       const ss = sessionStorage.getItem(HIST_KEY);
-      if (ss) return JSON.parse(ss);
+      if (ss) { _histCache = JSON.parse(ss); return; }
     } catch {}
-    // Fall back to localStorage for cross-session persistence
-    try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch { return []; }
+    // localStorage: write-before-read forces sync on browsers with lazy storage init.
+    // This is why histAdd() (which writes first) always works while read-only paths fail.
+    try {
+      const raw = localStorage.getItem(HIST_KEY) || '[]';
+      localStorage.setItem(HIST_KEY, raw);                    // force sync
+      const items = JSON.parse(localStorage.getItem(HIST_KEY));
+      _histCache = Array.isArray(items) ? items : [];
+      if (_histCache.length > 0) {
+        try { sessionStorage.setItem(HIST_KEY, JSON.stringify(_histCache)); } catch {}
+      }
+    } catch { _histCache = []; }
+  }
+  function histLoad() {
+    if (_histCache === null) histInit();
+    return _histCache;
   }
   function histSave(items) {
+    _histCache = items;
     const json = JSON.stringify(items);
     try { sessionStorage.setItem(HIST_KEY, json); } catch {}
     try { localStorage.setItem(HIST_KEY, json); } catch {}
@@ -522,11 +537,17 @@
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  // ── Initialization ────────────────────────────────────────────────────────────
+  histInit();  // populate cache (write-before-read); DOM is ready — script is at end of body
   {% if token_input and decoded and not decoded.get('error') %}
-  histAdd({{ token_input | tojson }});
+  histAdd({{ token_input | tojson }});  // POST path — also calls histRender()
+  {% else %}
+  histRender();  // GET path — synchronous, cache already populated above
   {% endif %}
-  // pageshow fires on initial load, back/forward navigation, and bfcache restores.
-  window.addEventListener('pageshow', () => histRender());
+  // bfcache restores only: page thawed from memory, re-init cache in case storage changed
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) { _histCache = null; histInit(); histRender(); }
+  });
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}
