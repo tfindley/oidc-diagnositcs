@@ -624,6 +624,7 @@ def token_refresh():
     return redirect(url_for('claims'))
 
 
+# ── Decode history helpers ────────────────────────────────────────────────────
 @app.route('/decode', methods=['GET', 'POST'])
 def decode_tool():
     decoded     = None
