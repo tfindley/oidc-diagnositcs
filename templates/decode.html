@@ -514,14 +514,16 @@
     el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
-  // Save the current token and re-render the history list.
   {% if token_input and decoded and not decoded.get('error') %}
   histAdd({{ token_input | tojson }});
   {% else %}
+  // Render immediately, then once more after the current task completes — some browsers
+  // (Safari, iOS) defer localStorage visibility until after the initial execution context.
   histRender();
+  setTimeout(histRender, 0);
   {% endif %}
-  // Re-render after bfcache restore (browser back/forward).
-  window.addEventListener('pageshow', function(e) { if (e.persisted) histRender(); });
+  // Re-render on every page show, including back/forward navigation and bfcache restores.
+  window.addEventListener('pageshow', () => histRender());
 
   // ── Token timeline ──────────────────────────────────────────────────────────
   {% if decoded and not decoded.error and decoded.payload.get('iat') and decoded.payload.get('exp') %}

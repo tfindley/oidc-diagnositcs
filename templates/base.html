@@ -425,21 +425,6 @@
       border-radius: var(--radius); padding: 14px;
     }
 
-    /* ── Footer ── */
-    .site-footer {
-      border-top: 1px solid var(--border); background: var(--surface);
-      margin-top: 32px; padding: 14px 24px;
-    }
-    .footer-inner {
-      max-width: 1160px; margin: 0 auto;
-      display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 8px;
-    }
-    .footer-copy { font-size: 0.75rem; color: var(--muted); }
-    .footer-links { display: flex; gap: 16px; font-size: 0.75rem; }
-    .footer-links a { color: var(--muted); text-decoration: none; }
-    .footer-links a:hover { color: var(--text); }
-
     /* ── Dark mode ────────────────────────────────────────────────────────────── */
     [data-theme="dark"] {
       --bg:       #0f1117;
@@ -601,21 +586,6 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
-
-  <!-- ── Footer ── -->
-  <footer class="site-footer">
-    <div class="footer-inner">
-      <span class="footer-copy">
-        OIDC Diagnostic Tool &mdash; <a href="{{ url_for('about') }}">About</a>
-      </span>
-      <div class="footer-links">
-        <a href="{{ github_url }}" target="_blank" rel="noopener">&#128279; GitHub</a>
-        {% if kofi_url %}
-        <a href="{{ kofi_url }}" target="_blank" rel="noopener">&#9749; Ko-fi</a>
-        {% endif %}
-      </div>
-    </div>
-  </footer>
 
   <script>
   // ── Copy to clipboard ──────────────────────────────────────────────────────
