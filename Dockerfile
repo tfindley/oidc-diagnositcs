@@ -19,6 +19,10 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Embed build timestamp (pass with --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ))
+ARG BUILD_DATE=development
+ENV BUILD_DATE=$BUILD_DATE
+
 # Copy application code
 COPY app.py .
 COPY templates/ templates/
