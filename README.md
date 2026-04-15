@@ -12,7 +12,7 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 
 | Layer | Technology |
 | --- | --- |
-| Language | Python 3.11+ |
+| Language | Python 3.13 |
 | Web framework | [Flask](https://flask.palletsprojects.com/) ≥ 3.0 |
 | OIDC / OAuth2 | [Authlib](https://docs.authlib.org/) ≥ 1.3 |
 | Cryptography | [cryptography](https://cryptography.io/) ≥ 42.0 (JWT key parsing) |
@@ -156,6 +156,19 @@ When `providers.yml` is present it completely overrides the single-provider env 
 ## Provider Setup Guides
 
 See [PROVIDERS.md](docs/PROVIDERS.md) for guides on how to add the OIDC Diagnostics app as a client.
+
+---
+
+## Reference Documentation
+
+The in-app Reference page (`/reference`) is also available as standalone Markdown in [docs/reference/](docs/reference/):
+
+| Document | Description |
+| --- | --- |
+| [Connectivity](docs/reference/connectivity.md) | Network topology, required paths, and connectivity troubleshooting |
+| [Scopes & Claims](docs/reference/scopes-and-claims.md) | OIDC scope definitions and the claims each scope provides |
+| [OIDC Flow](docs/reference/oidc-flow.md) | Authorization Code flow with PKCE — sequence diagram and explanation |
+| [Identity Brokering](docs/reference/identity-brokering.md) | Keycloak as identity broker with an upstream IdP — extended flow and claim mapping |
 
 ---
 

@@ -35,6 +35,8 @@
     <div style="display:flex;gap:12px;flex-wrap:wrap;">
       <a href="{{ github_url }}" target="_blank" rel="noopener"
          class="btn btn-primary">&#128279; Source Code (GitHub)</a>
+      <a href="{{ github_url }}/issues" target="_blank" rel="noopener"
+         class="btn btn-ghost">&#128030; Report a Bug / Request a Feature</a>
       {% if kofi_url %}
       <a href="{{ kofi_url }}" target="_blank" rel="noopener"
          class="btn btn-ghost">&#9749; Support on Ko-fi</a>
@@ -158,6 +160,51 @@
       All configuration is set via environment variables in <code>.env</code>.
       See <a href="{{ github_url }}" target="_blank" rel="noopener">the README</a> for full documentation.
     </p>
+  </div>
+
+
+  {# ── Data & Privacy ── #}
+  <div class="about-section">
+    <h2>Data &amp; Privacy</h2>
+    <h4>What this tool stores</h4>
+    <div class="table-wrap" style="margin-bottom:16px;">
+      <table>
+        <thead><tr><th>Data</th><th>Where</th><th>Cleared when</th></tr></thead>
+        <tbody>
+          <tr><td>ID token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+          <tr><td>Access token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+          <tr><td>Refresh token (if issued)</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+          <tr><td>UserInfo claims</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Sessions use <strong>client-side signed cookies</strong> — token data lives in your browser,
+      not in a server-side database. The server holds tokens in memory only for the brief duration
+      of processing a request. <strong>Nothing is written to disk, a database, or any external
+      service.</strong>
+    </p>
+    <h4>What the operator's server processes</h4>
+    <p class="text-muted">
+      The server code receives and decodes your tokens in order to render them for display.
+      It does not log token values. With <code>FLASK_DEBUG=true</code> Flask may surface token
+      data in error traces — a properly configured instance keeps debug mode off.
+    </p>
+    <p class="text-muted">
+      Your <strong>password is never seen by this tool</strong> — you authenticate directly on
+      your OIDC provider's login page.
+    </p>
+    <h4>Third parties</h4>
+    <p class="text-muted">
+      This tool does not connect to any analytics, advertising, or tracking service. The only
+      outbound network calls it makes are to your configured OIDC provider.
+    </p>
+    <div class="alert alert-warning">
+      <strong>Trust the operator.</strong> As with any OAuth2 client, you are trusting the person
+      who runs this instance. Only sign in with accounts whose data you are comfortable sharing
+      with the instance operator. Use the minimum scopes you need
+      (<code>openid email profile</code> is sufficient for most diagnostic purposes).
+    </div>
   </div>
 
 </div>

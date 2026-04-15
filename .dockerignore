@@ -1,13 +1,33 @@
+# Secrets / local config
 .env
 .env.*
 !.env.example
 providers.yml
 !providers.example.yml
+
+# Python artifacts
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# Git / CI
 .git/
 .gitignore
 .github/
+
+# Documentation
 *.md
+docs/
+
+# Compose files (only needed at dev time)
 docker-compose*.yml
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

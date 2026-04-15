@@ -3,7 +3,6 @@
 
 {% block extra_css %}
 .ref-wrap { max-width: 860px; margin: 0 auto; }
-.ref-wrap h4 { margin: 20px 0 8px; font-size: 0.9375rem; font-weight: 600; }
 .ref-wrap p  { font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px; }
 
 /* Connectivity flow diagram */
@@ -33,7 +32,7 @@
 <div class="ref-wrap">
   <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">Reference</h1>
   <p class="text-muted" style="margin-bottom:20px;font-size:0.875rem;">
-    Documentation on OIDC connectivity, scopes, the authorisation code flow, identity brokering, and data handling.
+    Documentation on OIDC connectivity, scopes, the authorisation code flow, and identity brokering.
   </p>
 
   <div class="card" id="ref-tabs">
@@ -43,7 +42,6 @@
         <button class="tab-btn{% if active_tab == 'scopes' %} active{% endif %}"       data-tab="scopes">Scopes &amp; Claims</button>
         <button class="tab-btn{% if active_tab == 'flow' %} active{% endif %}"         data-tab="flow">OIDC Flow</button>
         <button class="tab-btn{% if active_tab == 'brokering' or active_tab == 'federated' %} active{% endif %}" data-tab="brokering">Identity Brokering</button>
-        <button class="tab-btn{% if active_tab == 'privacy' %} active{% endif %}"      data-tab="privacy">Data &amp; Privacy</button>
       </div>
     </div>
 
@@ -174,50 +172,53 @@
 
       <h4>Full flow</h4>
       <pre class="oidc-flow-diagram">Browser             This App            Keycloak (Broker)   Upstream IdP
-  │                     │                      │                   │
-  │  GET /login          │                      │                   │
-  │ ────────────────────►│                      │                   │
-  │                      │ Generate PKCE        │                   │
-  │  302 → /authorize    │                      │                   │
-  │◄────────────────────-│                      │                   │
-  │                      │                      │                   │
-  │  GET /authorize      │                      │                   │
-  │ ──────────────────────────────────────────►│                   │
-  │                      │                      │ Show IdP picker   │
-  │  User selects IdP    │                      │◄──────────────── │
-  │◄──────────────────────────────────────────-│                   │
-  │                      │                      │                   │
-  │  302 → upstream /authorize                  │                   │
-  │ ──────────────────────────────────────────────────────────────►│
-  │                      │                      │  Show login UI    │
-  │  User authenticates  │                      │                  │◄─────
-  │◄──────────────────────────────────────────────────────────────-│
-  │                      │                      │                   │
-  │  302 → Keycloak callback with auth code     │                   │
-  │ ──────────────────────────────────────────►│                   │
-  │                      │                      │ Exchange code     │
-  │                      │                      │──────────────────►│
-  │                      │                      │  id_token,        │
-  │                      │                      │  access_token     │
-  │                      │                      │◄──────────────────│
-  │                      │                      │ Map claims        │
-  │                      │                      │ Issue local tokens│
-  │  302 → /callback?code=...                   │                   │
-  │◄──────────────────────────────────────────-│                   │
-  │                      │                      │                   │
-  │  GET /callback?code=...                     │                   │
-  │ ────────────────────►│                      │                   │
-  │                      │ POST /token          │                   │
-  │                      │─────────────────────►│                   │
-  │                      │  access_token,       │                   │
-  │                      │  id_token,           │                   │
-  │                      │  refresh_token       │                   │
-  │                      │◄─────────────────────│                   │
-  │                      │ GET /userinfo        │                   │
-  │                      │─────────────────────►│                   │
-  │                      │◄─────────────────────│                   │
-  │  302 → /claims       │                      │                   │
-  │◄────────────────────-│                      │                   │</pre>
+  │                   │                   │                   │
+  │  GET /login       │                   │                   │
+  │ ─────────────────►│                   │                   │
+  │                   │ Generate PKCE     │                   │
+  │  302 → /authorize │                   │                   │
+  │◄──────────────────│                   │                   │
+  │                   │                   │                   │
+  │  GET /authorize   │                   │                   │
+  │ ──────────────────────────────────────►│                   │
+  │                   │                   │ 302 → upstream    │
+  │                   │                   │ /authorize        │
+  │◄──────────────────────────────────────│                   │
+  │                   │                   │                   │
+  │  GET /authorize   │                   │                   │
+  │  (upstream IdP)   │                   │                   │
+  │ ──────────────────────────────────────────────────────────►│
+  │                   │                   │                   │  Show login UI
+  │  User logs in     │                   │                   │
+  │◄──────────────────────────────────────────────────────────│
+  │                   │                   │                   │
+  │  302 → Keycloak   │                   │                   │
+  │  /callback+code   │                   │                   │
+  │ ──────────────────────────────────────►│                   │
+  │                   │                   │ POST /token       │
+  │                   │                   │──────────────────►│
+  │                   │                   │  id_token,        │
+  │                   │                   │  access_token     │
+  │                   │                   │◄──────────────────│
+  │                   │                   │ Map claims        │
+  │                   │                   │ Issue tokens      │
+  │  302 → /callback  │                   │                   │
+  │◄──────────────────────────────────────│                   │
+  │                   │                   │                   │
+  │  GET /callback    │                   │                   │
+  │  ?code=...        │                   │                   │
+  │ ─────────────────►│                   │                   │
+  │                   │ POST /token       │                   │
+  │                   │──────────────────►│                   │
+  │                   │  access_token,    │                   │
+  │                   │  id_token,        │                   │
+  │                   │  refresh_token    │                   │
+  │                   │◄──────────────────│                   │
+  │                   │ GET /userinfo     │                   │
+  │                   │──────────────────►│                   │
+  │                   │◄──────────────────│                   │
+  │  302 → /claims    │                   │                   │
+  │◄──────────────────│                   │                   │</pre>
 
       <h4>What this means for your tokens</h4>
       <div class="table-wrap" style="margin-bottom:16px;">
@@ -267,56 +268,6 @@
         Flow tab for the full callback sequence.
       </div>
     </div>
-
-    {# ── Data & Privacy ── #}
-    <div class="tab-panel{% if active_tab == 'privacy' %} active{% endif %}" data-panel="privacy"
-         style="padding:20px;">
-      <h4 style="margin-top:0;">What this tool stores</h4>
-      <div class="table-wrap" style="margin-bottom:16px;">
-        <table>
-          <thead><tr><th>Data</th><th>Where</th><th>Cleared when</th></tr></thead>
-          <tbody>
-            <tr><td>ID token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>Access token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>Refresh token (if issued)</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-            <tr><td>UserInfo claims</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p>
-        Sessions use <strong>client-side signed cookies</strong> — token data lives in your browser,
-        not in a server-side database. The server holds tokens in memory only for the brief
-        duration of processing a request. <strong>Nothing is written to disk, a database, or
-        any external service.</strong>
-      </p>
-      <h4>What the operator's server processes</h4>
-      <p class="text-muted">
-        The server code receives and decodes your tokens in order to render them for display.
-        It does not log token values. With <code>FLASK_DEBUG=true</code> Flask may surface
-        token data in error traces — a properly configured instance keeps debug mode off.
-      </p>
-      <p class="text-muted">
-        Your <strong>password is never seen by this tool</strong> — you authenticate directly
-        on your OIDC provider's login page.
-      </p>
-      <h4>Third parties</h4>
-      <p class="text-muted">
-        This tool does not connect to any analytics, advertising, or tracking service.
-        The only outbound network calls it makes are to your configured OIDC provider.
-      </p>
-      <div class="alert alert-warning">
-        <strong>Trust the operator.</strong> As with any OAuth2 client, you are trusting the
-        person who runs this instance. Only sign in with accounts whose data you are comfortable
-        sharing with the instance operator. Use the minimum scopes you need
-        (<code>openid email profile</code> is sufficient for most diagnostic purposes).
-      </div>
-      <p class="text-muted" style="font-size:0.75rem;margin-top:12px;">
-        Source code: <a href="{{ github_url }}" target="_blank" rel="noopener">{{ github_url }}</a> —
-        licensed under the GNU Affero General Public License v3 (AGPL-3.0).
-        Modifications and deployments must make source available under the same licence.
-      </p>
-    </div>
-
   </div>
 </div>
 {% endblock %}
