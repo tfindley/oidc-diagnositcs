@@ -50,6 +50,8 @@ Single-file Flask app ([app.py](app.py)) with Jinja2 templates:
 - `/logout` — RP-initiated logout then session clear
 - `/api/connectivity` — server-side reachability check for a discovery URL
 - `/api/discovery` — fetches and returns a provider's discovery document
+- `/reference` — reference documentation page (pass `?tab=connectivity|scopes|flow|brokering`)
+- `/about` — technology stack, instance configuration, data & privacy
 
 **Key helpers in `app.py`:**
 
@@ -65,8 +67,10 @@ Single-file Flask app ([app.py](app.py)) with Jinja2 templates:
 - `base.html` — layout, all CSS (CSS variables, full dark mode overrides), shared JS utilities (`copyText`, `initTabs`, `initSearch`, `toggleTheme`)
 - `index.html` — login landing; multi-provider cards with connectivity check and Conformance link; signed-in state; Provider Details tabbed panel (Configuration + Provider Metadata) below the grid
 - `claims.html` — five-tab view: ID Token / Access Token / UserInfo / Compare / Raw JWT; scope filter bar; Copy as curl button
-- `decode.html` — standalone decoder with expiry warning, live token timeline, type detection, claim descriptions, JWKS signature verification, decode history (type badges + expiry colour coding + →A/→B slots), and two-token diff
+- `decode.html` — standalone decoder with expiry warning, live token timeline, type detection, claim descriptions, JWKS signature verification, and two-token diff
 - `conformance.html` — conformance and security check results grouped by category with status badges
+- `reference.html` — four-tab reference docs: Connectivity, Scopes & Claims, OIDC Flow (3-column ASCII sequence diagram), Identity Brokering (4-column sequence diagram showing Keycloak as broker to upstream IdP)
+- `about.html` — technology stack, build info, instance configuration, data & privacy section; links to source and issues tracker
 - `macros.html` — `claim_value` and `claims_table` macros shared between claims.html and decode.html
 
 **Interactive features:**
@@ -78,7 +82,7 @@ Single-file Flask app ([app.py](app.py)) with Jinja2 templates:
 - Live expiry countdown in nav bar and claims page header
 - Compare tab highlights claims present in multiple sources with differing values (⚠ badge)
 - Raw JWT tab: colour-coded header · payload · signature with Copy buttons
-- Decoder: live-updating token timeline bar (`iat`→now→`exp`); expiry warning banner; token type detection (ID/Access/Refresh — supports Keycloak `typ` values `"ID"`, `"Bearer"`, `"Refresh"` and RFC 9068 `"at+jwt"`); decode history with type badge + expiry colour coding + `→ A` / `→ B` compare shortcuts + Clear all; two-token diff table with claim descriptions; JWKS signature verification via Web Crypto API (RS/PS/ES families)
+- Decoder: live-updating token timeline bar (`iat`→now→`exp`); expiry warning banner; token type detection (ID/Access/Refresh — supports Keycloak `typ` values `"ID"`, `"Bearer"`, `"Refresh"` and RFC 9068 `"at+jwt"`); two-token diff table with claim descriptions; JWKS signature verification via Web Crypto API (RS/PS/ES families)
 - Claims page: claim description tooltips on hover; Copy as curl button fetches UserInfo endpoint from discovery doc and builds a ready-to-paste `curl` command
 - Multi-provider: signed-in provider card highlighted with green border and action buttons; Provider Details panel below grid with Configuration and Metadata tabs, auto-selects signed-in provider; Conformance quick-launch link on every provider card
 - Connectivity checker: displays `✓ reachable` + latency or `✗ unreachable` + full error text (word-wrapped, selectable) per card

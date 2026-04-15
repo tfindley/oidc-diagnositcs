@@ -957,7 +957,7 @@ def providers_page():
 def reference():
     """Reference documentation page — connectivity, scopes, OIDC flow, privacy."""
     tab = request.args.get('tab', 'connectivity')
-    if tab not in {'connectivity', 'scopes', 'flow', 'federated', 'brokering', 'privacy'}:
+    if tab not in {'connectivity', 'scopes', 'flow', 'brokering', 'federated'}:  # 'federated' kept for backward-compat URLs
         tab = 'connectivity'
     return render_template('reference.html', active_tab=tab)
 
