@@ -6,23 +6,17 @@ All items below depend on the encrypted server-side session store introduced for
 
 ---
 
-## JWT decoder history with comparison
+## ~~JWT decoder history with comparison~~ ✓ shipped
 
-Persist decoded JWTs in the session so the decoder page (`/decode`) can offer a recall list and side-by-side comparison.
+~~Persist decoded JWTs in the session so the decoder page (`/decode`) can offer a recall list and side-by-side comparison.~~
 
-- Each decode adds an entry to `session['decoder_history']` keyed by a content hash so duplicates collapse.
-- The decoder page renders a small recall table on load, with checkboxes to pick two for comparison.
-- Selecting two enters the existing diff UI without re-pasting tokens.
-- History is per-session (cleared at logout / session expiry). Appropriate for sensitive token material.
+Implemented: every successful decode is stored in `session['decoder_history']` (max 10, deduped by payload hash). The decoder page shows a "Recent decodes" collapsible with recall, → A / → B diff-slot loading, and a "Compare selected" button for one-click two-token comparison.
 
-This was attempted previously with client-side storage; that implementation was unreliable (the recall table populated only after a fresh decode). Server-side session storage makes it straightforward.
+## ~~Push current tokens to JWT decoder~~ ✓ shipped
 
-## Push current tokens to JWT decoder
+~~Add a "Push to decoder" button on the `/claims` page that pre-loads the active session's ID, access, and refresh tokens into `/decode`.~~
 
-Add a "Push to decoder" button on the `/claims` page that pre-loads the active session's ID, access, and refresh tokens into `/decode` so they can be inspected with the decoder's full feature set (signature verification, expiry banner, type detection) without copy-paste.
-
-- Wire-up is small: link to `/decode?from_session=1` and have the decoder pull from `session['raw_tokens']`.
-- Useful when investigating signature problems or wanting the decoder's UI affordances on a token you're actively using.
+Implemented: "Open in Decoder" button on each raw token in the Claims → Raw JWT tab. The decoder page also shows a "Load from active session" panel with per-token-type buttons when the user is signed in.
 
 ## Side-by-side OIDC profile comparison
 

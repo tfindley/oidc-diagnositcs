@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -423,6 +424,47 @@ def decode_jwt(token: str) -> dict:
         return {'error': str(exc), 'raw': token}
 
 
+def _detect_token_type(header: dict, payload: dict) -> str:
+    """Classify a JWT as ID / Access / Refresh / Unknown from header+payload typ claims."""
+    typ = (header.get('typ') or '').upper()
+    p_typ = (payload.get('typ') or '').upper()
+    if typ == 'ID':
+        return 'ID'
+    if typ in ('REFRESH', 'REFRESH+JWT'):
+        return 'Refresh'
+    if typ in ('AT+JWT', 'APPLICATION/AT+JWT'):
+        return 'Access'
+    if p_typ == 'BEARER' or typ == 'BEARER':
+        return 'Access'
+    return 'Unknown'
+
+
+def _update_decoder_history(session_obj, token_raw: str, decoded: dict) -> None:
+    """Prepend a successfully-decoded JWT to session decoder history (max 10, deduped by payload hash)."""
+    payload = decoded.get('payload', {})
+    payload_hash = hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode()
+    ).hexdigest()[:12]
+    history = list(session_obj.get('decoder_history', []))
+    if any(e['hash'] == payload_hash for e in history):
+        return
+    label_parts = [
+        payload.get('preferred_username') or payload.get('email') or (payload.get('sub') or '')[:20]
+    ]
+    iss = payload.get('iss', '')
+    if iss:
+        label_parts.append(iss.rstrip('/').rsplit('/', 1)[-1])
+    entry = {
+        'hash': payload_hash,
+        'ts': int(time.time()),
+        'label': ' — '.join(filter(None, label_parts)) or 'token',
+        'token_type': _detect_token_type(decoded.get('header', {}), payload),
+        'token_raw': token_raw,
+    }
+    history.insert(0, entry)
+    session_obj['decoder_history'] = history[:10]
+
+
 def prepare_claims(claims_dict: dict) -> list:
     """Convert a claims dict into a sorted list of typed display entries."""
     if not claims_dict:
@@ -764,16 +806,22 @@ def token_refresh():
     return redirect(url_for('claims'))
 
 
-# ── Decode history helpers ────────────────────────────────────────────────────
 @app.route('/decode', methods=['GET', 'POST'])
 def decode_tool():
     decoded     = None
     claims_list = None
     token_input = request.form.get('token', '').strip()
     jwks_uri = request.form.get('jwks_uri', '').strip()
+
+    # Pre-load from session when linked from /claims "Open in Decoder" buttons
+    if not token_input and request.args.get('from_session') and session.get('raw_tokens'):
+        which = request.args.get('token_type', 'id_token')
+        if which in ('id_token', 'access_token', 'refresh_token'):
+            token_input = session['raw_tokens'].get(which, '') or ''
+
     if token_input:
         decoded = decode_jwt(token_input)
-        if decoded and not decoded.get('error'):
+        if decoded and not decoded.get('error') and not decoded.get('jwe'):
             claims_list = prepare_claims(decoded.get('payload', {}))
             # Pre-fill JWKS URI from the session provider's discovery doc if not supplied
             if not jwks_uri and session.get('provider_id'):
@@ -786,6 +834,15 @@ def decode_tool():
                         pass
             if jwks_uri:
                 decoded['jwks_uri'] = jwks_uri
+            _update_decoder_history(session, token_input, decoded)
+
+    # Which session tokens are available for the "Load from session" panel
+    session_token_types = []
+    if session.get('raw_tokens'):
+        for k in ('id_token', 'access_token', 'refresh_token'):
+            if session['raw_tokens'].get(k):
+                session_token_types.append(k)
+
     return render_template('decode.html',
         token_input=token_input,
         decoded=decoded,
@@ -793,7 +850,15 @@ def decode_tool():
         now=int(time.time()),
         claim_descriptions=CLAIM_DESCRIPTIONS,
         jwks_uri=jwks_uri,
+        decoder_history=session.get('decoder_history', []),
+        session_token_types=session_token_types,
     )
+
+
+@app.route('/decode/history/clear', methods=['POST'])
+def decode_history_clear():
+    session.pop('decoder_history', None)
+    return redirect(url_for('decode_tool'))
 
 
 @app.route('/logout')
