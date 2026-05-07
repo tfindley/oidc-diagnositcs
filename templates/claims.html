@@ -245,12 +245,16 @@
     </p>
 
     {# Copy button is in the header row OUTSIDE the scrollable token-box so it always stays clickable #}
-    {% macro raw_section(label, token_str) %}
+    {% macro raw_section(label, token_str, token_type_key) %}
     {% if token_str %}
     <div class="token-wrap">
       <div class="token-head">
         <span class="token-head-label">{{ label }}</span>
-        <button class="btn btn-xs btn-ghost" onclick='copyText({{ token_str | tojson }})'>&#x2398; Copy</button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-xs btn-ghost" onclick='copyText({{ token_str | tojson }})'>&#x2398; Copy</button>
+          <a href="{{ url_for('decode_tool', from_session=1, token_type=token_type_key) }}"
+             class="btn btn-xs btn-ghost">&#128269; Open in Decoder</a>
+        </div>
       </div>
       <div class="token-box">
         {% set parts = token_str.split('.') %}
@@ -264,9 +268,9 @@
     {% endif %}
     {% endmacro %}
 
-    {{ raw_section('ID Token', raw_tokens.id_token) }}
-    {{ raw_section('Access Token', raw_tokens.access_token) }}
-    {{ raw_section('Refresh Token', raw_tokens.refresh_token) }}
+    {{ raw_section('ID Token', raw_tokens.id_token, 'id_token') }}
+    {{ raw_section('Access Token', raw_tokens.access_token, 'access_token') }}
+    {{ raw_section('Refresh Token', raw_tokens.refresh_token, 'refresh_token') }}
 
     {% if raw_tokens.expires_at %}
     <div class="section-head">Token Metadata</div>

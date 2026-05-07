@@ -44,6 +44,10 @@
 .diff-only-b { background: #f0f8ff; }
 .diff-changed { background: #fffbeb; }
 
+/* History table */
+.hist-row:hover { background: var(--surface2); }
+.hist-check { cursor: pointer; }
+
 /* Help section */
 .help-toggle { margin-bottom: 20px; }
 .help-toggle summary {
@@ -104,6 +108,76 @@
       </form>
     </div>
   </div>
+
+  {# ── Load from active session ── #}
+  {% if session_token_types %}
+  <div class="card" style="margin-bottom:20px;padding:12px 18px;">
+    <div style="font-size:0.8125rem;font-weight:600;margin-bottom:10px;color:var(--muted);">Load from active session</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      {% if 'id_token' in session_token_types %}
+      <a href="{{ url_for('decode_tool', from_session=1, token_type='id_token') }}" class="btn btn-ghost btn-sm">ID Token</a>
+      {% endif %}
+      {% if 'access_token' in session_token_types %}
+      <a href="{{ url_for('decode_tool', from_session=1, token_type='access_token') }}" class="btn btn-ghost btn-sm">Access Token</a>
+      {% endif %}
+      {% if 'refresh_token' in session_token_types %}
+      <a href="{{ url_for('decode_tool', from_session=1, token_type='refresh_token') }}" class="btn btn-ghost btn-sm">Refresh Token</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Recent decodes ── #}
+  {% if decoder_history %}
+  <script>const DECODER_HISTORY = {{ decoder_history | tojson }};</script>
+  <details class="help-toggle" style="margin-bottom:20px;" id="history-section">
+    <summary>Recent decodes ({{ decoder_history | length }})</summary>
+    <div style="margin-top:12px;">
+      <div class="table-wrap">
+        <table style="font-size:0.8125rem;">
+          <thead>
+            <tr>
+              <th style="width:28px;padding:4px 8px;"></th>
+              <th style="padding:4px 8px;">Token</th>
+              <th style="padding:4px 8px;width:68px;">Type</th>
+              <th style="padding:4px 8px;width:88px;">Decoded</th>
+              <th style="padding:4px 8px;text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in decoder_history %}
+            <tr class="hist-row">
+              <td style="padding:6px 8px;">
+                <input type="checkbox" class="hist-check" data-hash="{{ entry.hash }}" onchange="onHistoryCheck()">
+              </td>
+              <td style="padding:6px 8px;font-weight:500;">{{ entry.label }}</td>
+              <td style="padding:6px 8px;">
+                {% if entry.token_type == 'ID' %}<span class="badge badge-blue">ID</span>
+                {% elif entry.token_type == 'Access' %}<span class="badge badge-green">Access</span>
+                {% elif entry.token_type == 'Refresh' %}<span class="badge badge-gray">Refresh</span>
+                {% else %}<span class="badge">{{ entry.token_type }}</span>{% endif %}
+              </td>
+              <td style="padding:6px 8px;color:var(--muted);" class="hist-ts" data-ts="{{ entry.ts }}"></td>
+              <td style="padding:6px 8px;text-align:right;white-space:nowrap;">
+                <button class="btn btn-xs btn-ghost" onclick="histRecall('{{ entry.hash }}')">Recall</button>
+                <button class="btn btn-xs btn-ghost" onclick="histLoadDiff('{{ entry.hash }}','a')">&#10142; A</button>
+                <button class="btn btn-xs btn-ghost" onclick="histLoadDiff('{{ entry.hash }}','b')">&#10142; B</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
+        <button id="hist-compare-btn" class="btn btn-primary btn-sm" style="display:none;" onclick="histCompareSelected()">Compare selected</button>
+        <span></span>
+        <form method="post" action="{{ url_for('decode_history_clear') }}" style="display:inline;">
+          <button type="submit" class="btn btn-xs btn-ghost" style="color:var(--muted);">Clear history</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  {% endif %}
 
   {# ── How to get a JWT ── #}
   <details class="help-toggle">
@@ -602,6 +676,49 @@
       </div>` + html;
     }
     out.innerHTML = html;
+  }
+
+  // ── Decoder history ──────────────────────────────────────────────────────
+  document.querySelectorAll('.hist-ts').forEach(td => {
+    const diff = Math.floor(Date.now() / 1000) - parseInt(td.dataset.ts, 10);
+    if (diff < 60)         td.textContent = 'just now';
+    else if (diff < 3600)  td.textContent = Math.floor(diff / 60) + 'm ago';
+    else if (diff < 86400) td.textContent = Math.floor(diff / 3600) + 'h ago';
+    else                   td.textContent = new Date(parseInt(td.dataset.ts, 10) * 1000).toLocaleDateString();
+  });
+
+  function histRecall(hash) {
+    const entry = (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === hash);
+    if (!entry) return;
+    document.querySelector('textarea[name="token"]').value = entry.token_raw;
+    document.querySelector('textarea[name="token"]').closest('form').submit();
+  }
+
+  function histLoadDiff(hash, slot) {
+    const entry = (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === hash);
+    if (!entry) return;
+    const diffSection = document.getElementById('diff-section');
+    if (diffSection) diffSection.open = true;
+    const ta = document.getElementById('diff-' + slot);
+    if (ta) { ta.value = entry.token_raw; ta.focus(); }
+  }
+
+  function onHistoryCheck() {
+    const checked = document.querySelectorAll('.hist-check:checked');
+    const btn = document.getElementById('hist-compare-btn');
+    if (btn) btn.style.display = checked.length === 2 ? 'inline-flex' : 'none';
+    if (checked.length > 2) this.checked = false;
+  }
+
+  function histCompareSelected() {
+    const checked = Array.from(document.querySelectorAll('.hist-check:checked'));
+    if (checked.length !== 2) return;
+    const entries = checked.map(cb => (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === cb.dataset.hash));
+    if (!entries[0] || !entries[1]) return;
+    document.getElementById('diff-a').value = entries[0].token_raw;
+    document.getElementById('diff-b').value = entries[1].token_raw;
+    const diffSection = document.getElementById('diff-section');
+    if (diffSection) { diffSection.open = true; diffSection.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   }
 </script>
 {% endblock %}

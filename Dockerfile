@@ -17,7 +17,8 @@ RUN apt-get update \
 
 # Install dependencies first (layer-cached independently of app code)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade "pip>=26.1" \
+ && pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
