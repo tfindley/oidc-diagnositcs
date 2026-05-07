@@ -168,25 +168,44 @@
       <table>
         <thead><tr><th>Data</th><th>Where</th><th>Cleared when</th></tr></thead>
         <tbody>
-          <tr><td>ID token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-          <tr><td>Access token</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-          <tr><td>Refresh token (if issued)</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
-          <tr><td>UserInfo claims</td><td>Browser session cookie</td><td>Browser close or sign out</td></tr>
+          <tr><td>ID token</td><td>Encrypted on server disk</td><td>Sign out, or session expiry</td></tr>
+          <tr><td>Access token</td><td>Encrypted on server disk</td><td>Sign out, or session expiry</td></tr>
+          <tr><td>Refresh token (if issued)</td><td>Encrypted on server disk</td><td>Sign out, or session expiry</td></tr>
+          <tr><td>UserInfo claims</td><td>Encrypted on server disk</td><td>Sign out, or session expiry</td></tr>
+          <tr><td>Decryption key</td><td>Browser cookie only — never on the server</td><td>Sign out, or session expiry</td></tr>
         </tbody>
       </table>
     </div>
+    <h4>Zero-knowledge sessions</h4>
     <p>
-      Sessions use <strong>client-side signed cookies</strong> — token data lives in your browser,
-      not in a server-side database. The server holds tokens in memory only for the brief duration
-      of processing a request. <strong>Nothing is written to disk, a database, or any external
-      service.</strong>
+      Token data is stored on the server as <strong>encrypted ciphertext</strong>. The encryption
+      key for your session is split between two places:
+    </p>
+    <ul>
+      <li>A random per-session key that lives only in your browser cookie.</li>
+      <li>A server-held pepper that is the same for every user.</li>
+    </ul>
+    <p>
+      Both halves are required to decrypt session data. Your cookie alone cannot decrypt anyone
+      else's session. The server alone cannot decrypt <em>any</em> session — even an admin reading
+      the disk directly sees only opaque bytes. Decrypted plaintext exists in server memory only
+      for the brief duration of handling a request that includes your cookie.
+    </p>
+    <p>
+      Disk files are removed when you sign out. They also become unreadable once the configured
+      session lifetime expires (<code>SESSION_LIFETIME_MINUTES</code>), independent of the JWT's
+      own expiry — the nav bar shows both countdowns side-by-side.
     </p>
     <h4>What the operator's server processes</h4>
     <p class="text-muted">
       The server code receives and decodes your tokens in order to render them for display.
-      It does not log token values. With <code>FLASK_DEBUG=true</code> Flask may surface token
-      data in error traces — a properly configured instance keeps debug mode off.
+      It does not log token values.
     </p>
+    <div class="alert alert-warning">
+      <strong>Debug mode breaks the privacy model.</strong> With <code>FLASK_DEBUG=true</code>
+      the Werkzeug debugger and tracebacks can surface the server pepper, secret key, and
+      in-flight plaintext session data. A properly configured instance keeps debug mode off.
+    </div>
     <p class="text-muted">
       Your <strong>password is never seen by this tool</strong> — you authenticate directly on
       your OIDC provider's login page.

@@ -31,3 +31,6 @@ docker-compose*.yml
 .vscode/
 *.swp
 .DS_Store
+
+# Encrypted server-side session storage
+flask_session/

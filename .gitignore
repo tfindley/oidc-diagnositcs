@@ -20,3 +20,6 @@ venv/
 
 # Logs
 *.log
+
+# Encrypted server-side session storage
+flask_session/

@@ -210,12 +210,14 @@ All single-provider configuration is via environment variables in a `.env` file.
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `SECRET_KEY` | Yes | *(random, ephemeral)* | Flask session key — set a fixed value or sessions won't survive restarts |
+| `SECRET_KEY` | Yes | *(random, ephemeral)* | Flask secret key — set a fixed value or session-related signing won't survive restarts |
+| `SESSION_ENCRYPTION_PEPPER` | Yes | *(random, ephemeral)* | Server-side pepper combined with each user's per-session key to encrypt session data on disk. Treat as critically as `SECRET_KEY`. Rotating it invalidates all active sessions. Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `SESSION_FILE_DIR` | No | `/tmp/flask_session` | Directory where encrypted session ciphertext is written. Use a tmpfs mount to avoid disk persistence across container restarts. |
 | `PORT` | No | `5000` | Port to listen on |
-| `FLASK_DEBUG` | No | `false` | Enable Flask debug mode — **never use in production** |
+| `FLASK_DEBUG` | No | `false` | Enable Flask debug mode — **never use in production**. Debug mode exposes the pepper, the secret key, and in-flight plaintext session data via the Werkzeug debugger and tracebacks. |
 | `PREFERRED_URL_SCHEME` | No | *(auto)* | Force `https` in callback URLs if your proxy doesn't send `X-Forwarded-Proto` |
 | `SESSION_COOKIE_SECURE` | No | `false`* | Force the `Secure` flag on the session cookie (*auto-set when `PREFERRED_URL_SCHEME=https`) |
-| `SESSION_LIFETIME_MINUTES` | No | `120` | Max lifetime for permanent sessions; sessions in this app are non-permanent and expire on browser close |
+| `SESSION_LIFETIME_MINUTES` | No | `120` | Maximum session lifetime in minutes. When a session expires you are signed out regardless of whether the underlying tokens are still valid. The nav bar shows the session-expiry countdown alongside the token-expiry countdown. |
 
 ### UI configuration
 
@@ -318,15 +320,29 @@ Multi-arch: `linux/amd64` on every build; `linux/amd64` + `linux/arm64` on versi
 
 | Data | Where stored | When cleared |
 | --- | --- | --- |
-| ID token (JWT string) | Browser session cookie | Browser close or Sign out |
-| Access token (JWT string) | Browser session cookie | Browser close or Sign out |
-| Refresh token (if issued) | Browser session cookie | Browser close or Sign out |
-| UserInfo claims (JSON) | Browser session cookie | Browser close or Sign out |
-| Display username | Browser session cookie | Browser close or Sign out |
+| ID token (JWT string) | Encrypted on server disk | Sign out, or session expiry |
+| Access token (JWT string) | Encrypted on server disk | Sign out, or session expiry |
+| Refresh token (if issued) | Encrypted on server disk | Sign out, or session expiry |
+| UserInfo claims (JSON) | Encrypted on server disk | Sign out, or session expiry |
+| Display username | Encrypted on server disk | Sign out, or session expiry |
+| Decryption key | Browser cookie only — never on the server | Sign out, or session expiry |
 
-Flask sessions are **client-side signed cookies** — data lives in the browser cookie, not in a server-side database. The server reads and re-signs the cookie on each request, so tokens are only in server memory for the brief duration of processing a single request. Nothing is written to disk, a database, or any external service.
+### Zero-knowledge sessions
 
-Sessions in this app are **non-permanent**: they expire when the browser is closed, regardless of any session lifetime configuration.
+Session data is stored on the server as **authenticated ciphertext** (Fernet, AES-128-CBC + HMAC-SHA256). The encryption key for each session is split between two places:
+
+- A random 32-byte per-session key that lives only in the user's browser cookie.
+- A server-held pepper (`SESSION_ENCRYPTION_PEPPER`) that is the same for every user.
+
+Both halves are required to decrypt session data via HKDF-SHA256. Properties:
+
+- The server cannot passively read any user's session — the per-session key is never on the server outside the brief window when that user's request is being handled.
+- An attacker who steals the disk (backup leak, volume mount, container image) gets only opaque bytes, because they don't have the per-session keys.
+- An attacker who steals one user's cookie still needs the pepper to decrypt their data offline.
+- Rotating `SESSION_ENCRYPTION_PEPPER` invalidates **all** active sessions immediately — useful for emergency revocation.
+- Logging out or letting the session expire causes Fernet's TTL check to reject the ciphertext on next read; the disk file is also actively removed at logout.
+
+Session lifetime is **independent of token lifetime**. `SESSION_LIFETIME_MINUTES` controls how long the encrypted blob is decryptable, regardless of whether the underlying access token is still valid. The nav bar shows both countdowns.
 
 ### What operators can and cannot see
 
@@ -334,21 +350,22 @@ Sessions in this app are **non-permanent**: they expire when the browser is clos
 | --- | --- |
 | User's **password** | **No.** Users authenticate directly on the OIDC provider's login page. This app never receives or handles passwords. |
 | **Authorization code** | Briefly, in the `/callback?code=…` URL. Codes are single-use and expire within seconds of being issued. Server access logs may record this URL. |
-| **Access / ID tokens** | In principle yes — the server code receives and processes them to decode and display claims. The default code does not log tokens. `FLASK_DEBUG=true` can surface them in error pages; never enable debug mode on a public instance. |
-| **User profile claims** | In principle yes, for the same reason — the server renders them into HTML. |
-| **Refresh token** | In principle yes, if the provider issued one. Not requested unless `offline_access` is in the configured scopes. |
+| **Access / ID tokens** | Only while a request from that user is in flight. The plaintext exists in server memory just long enough to render the response, then is discarded. The on-disk record is encrypted with a key the server doesn't hold. The default code does not log tokens. `FLASK_DEBUG=true` defeats this guarantee — never enable debug mode on a public instance. |
+| **User profile claims** | Same as above — visible only during request handling. |
+| **Refresh token** | Same as above. Not requested unless `offline_access` is in the configured scopes. |
 
-This is the same trust model as any OAuth2 confidential client. Users should only authenticate with instances operated by people they trust, and should grant the minimum scopes needed.
+This is a stronger trust model than the previous client-side cookie design, but you are still trusting the operator to run the published code unmodified. Sign in only on instances operated by people you trust, and grant the minimum scopes needed.
 
 ### Recommendations for public deployments
 
 - Set `PRIVACY_NOTICE=true` to display a data-handling statement on the landing page.
-- Keep `FLASK_DEBUG=false` (the default). Debug mode can expose token values in error traces.
+- Keep `FLASK_DEBUG=false` (the default). Debug mode exposes the pepper, the secret key, and in-flight plaintext session data.
+- Set both `SECRET_KEY` and `SESSION_ENCRYPTION_PEPPER` to strong random values. Keep them in `.env` (or your secret store) — never check them into git. Rotating the pepper invalidates all sessions; rotating the secret key invalidates session-ID cookies.
 - Run behind HTTPS and set `PREFERRED_URL_SCHEME=https` so the session cookie carries the `Secure` flag and cannot be sent over plain HTTP.
+- Mount `SESSION_FILE_DIR` as a tmpfs if you want session ciphertext to disappear on container restart even before its TTL expires.
 - Request the minimum scopes: `openid email profile` is sufficient to demonstrate the OIDC flow without granting broader permissions.
-- Do **not** request `offline_access` on a public demo — doing so causes the provider to issue a long-lived refresh token that is then held in the user's session cookie.
+- Do **not** request `offline_access` on a public demo — long-lived refresh tokens become part of the session ciphertext.
 - Treat your server access logs as sensitive; they may contain short-lived authorization codes.
-- Set a strong, random `SECRET_KEY` — this signs and verifies every session cookie.
 
 **Recommended for a quick public demo:** Google is the easiest to set up (15 minutes, no server, free) and has the widest reach — any visitor can test with their existing Google account. Set `OIDC_SCOPE=openid email profile`, request only the scopes you need, and set `PRIVACY_NOTICE=true`.
 
