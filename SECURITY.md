@@ -9,8 +9,10 @@ This tool is intended for **diagnostic use only**. It decodes JWTs **without sig
 - Do not expose this tool to the public internet without HTTPS.
 - Set `PRIVACY_NOTICE=true` so users understand the data-handling model.
 - Keep `SHOW_CONFIG=false` (the default) to avoid exposing client credentials or discovery URLs on the landing page.
-- Set `FLASK_DEBUG=false` (the default). Debug mode can surface token values in error traces.
-- Use a strong, random `SECRET_KEY` — this signs every session cookie.
+- **Keep `FLASK_DEBUG=false` (the default).** Debug mode is incompatible with the zero-knowledge session design: the Werkzeug debugger and tracebacks can surface `SESSION_ENCRYPTION_PEPPER`, `SECRET_KEY`, and in-flight plaintext session data (decrypted tokens and userinfo) to anyone who can trigger an exception. Never enable debug mode on a network-reachable instance.
+- Use a strong, random `SECRET_KEY` — this signs the session-ID cookie and is also used by Flask for other internal signing.
+- Use a strong, random `SESSION_ENCRYPTION_PEPPER` — this is the server-held half of the session-encryption key. Treat it as critically as `SECRET_KEY`. Rotating it invalidates **all** active sessions immediately (which is intended behaviour and useful for emergency revocation).
+- Mount `SESSION_FILE_DIR` (default `/tmp/flask_session`) as a tmpfs if you want session ciphertext to be unrecoverable across container restarts even before its TTL expires.
 - Request the minimum scopes you need (`openid email profile` is sufficient for most diagnostic purposes).
 
 See [Data Handling & Privacy](README.md#data-handling--privacy) in the README for the full trust model.

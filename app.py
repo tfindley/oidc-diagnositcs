@@ -6,13 +6,18 @@ import time
 import yaml
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import requests as http_requests
 from authlib.integrations.flask_client import OAuth
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from dotenv import load_dotenv
 from flask import (Flask, flash, jsonify, redirect, render_template,
                    request, session, url_for)
+from flask.sessions import SessionInterface, SessionMixin
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 load_dotenv()
@@ -44,13 +49,142 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY  = True,
     SESSION_COOKIE_SAMESITE  = 'Lax',
     SESSION_COOKIE_SECURE    = _force_secure,
-    # Sessions are non-permanent (expire on browser close) unless PERMANENT_SESSION_LIFETIME
-    # is set AND session.permanent is set to True in a route — neither happens in this app,
-    # so all sessions die when the browser tab/window is closed.
+    # Session lifetime is honoured by the encrypted-filesystem session interface
+    # (Fernet ttl on decrypt) and by setting session.permanent = True after login.
     PERMANENT_SESSION_LIFETIME = timedelta(
         minutes=int(os.environ.get('SESSION_LIFETIME_MINUTES', '120'))
     ),
 )
+
+# ── Encrypted-filesystem session storage ──────────────────────────────────────
+# EntraID and other large-claim providers produce token+userinfo payloads that
+# exceed the 4 KB browser cookie limit. We store sessions on disk as ciphertext.
+#
+# Each session has a random 32-byte key that lives only in the user's cookie.
+# That key is combined via HKDF with a server-held pepper to derive a Fernet
+# key. The disk file is opaque without both halves:
+#   - cookie alone  → no pepper, cannot decrypt
+#   - disk alone    → no per-session key, cannot decrypt
+#   - server alone  → no per-session key, cannot decrypt any user's session
+#
+# This is a passive-read defence (data-at-rest, backups, insider read of disk).
+# An RCE attacker on the running server can still read in-flight plaintext;
+# that is out of scope for this layer.
+_SESSION_DIR = Path(os.environ.get('SESSION_FILE_DIR', '/tmp/flask_session'))
+_SESSION_DIR.mkdir(parents=True, exist_ok=True)
+_SESSION_DIR.chmod(0o700)
+
+_pepper_env = os.environ.get('SESSION_ENCRYPTION_PEPPER')
+if not _pepper_env:
+    _pepper_env = secrets.token_hex(32)
+    print(
+        "WARNING: SESSION_ENCRYPTION_PEPPER not set — generated ephemeral pepper. "
+        "All sessions become unrecoverable on restart. Set it in .env for persistence."
+    )
+_PEPPER = _pepper_env.encode('utf-8')
+
+
+class _EncryptedSession(dict, SessionMixin):
+    def __init__(self, initial=None, sid=None, key=None, new=False):
+        super().__init__(initial or {})
+        self.sid = sid or secrets.token_urlsafe(32)
+        self.key = key or secrets.token_bytes(32)
+        self.new = new
+        self.modified = False
+
+    def __setitem__(self, k, v):
+        super().__setitem__(k, v)
+        self.modified = True
+
+    def __delitem__(self, k):
+        super().__delitem__(k)
+        self.modified = True
+
+    def clear(self):
+        super().clear()
+        self.modified = True
+
+    def pop(self, k, *args):
+        result = super().pop(k, *args)
+        self.modified = True
+        return result
+
+
+class EncryptedFilesystemSessionInterface(SessionInterface):
+    serializer = json
+    session_class = _EncryptedSession
+
+    def __init__(self, directory: Path, pepper: bytes):
+        self.directory = directory
+        self.pepper = pepper
+
+    def _derive(self, session_key: bytes) -> bytes:
+        derived = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=self.pepper,
+            info=b"oidc-diag-session-v1",
+        ).derive(session_key)
+        return base64.urlsafe_b64encode(derived)
+
+    def _path(self, sid: str) -> Path:
+        # sid is urlsafe-base64 (no path separators or dots); strip defensively.
+        safe = sid.replace('/', '').replace('\\', '').replace('.', '')
+        return self.directory / f"{safe}.sess"
+
+    def open_session(self, app, request):
+        ttl = int(app.config['PERMANENT_SESSION_LIFETIME'].total_seconds())
+        raw = request.cookies.get(app.config['SESSION_COOKIE_NAME'])
+        if not raw or '.' not in raw:
+            return self.session_class(new=True)
+        try:
+            sid, key_b64 = raw.rsplit('.', 1)
+            key = base64.urlsafe_b64decode(key_b64 + '=' * (-len(key_b64) % 4))
+            p = self._path(sid)
+            if not p.exists():
+                return self.session_class(sid=sid, key=key, new=True)
+            plaintext = Fernet(self._derive(key)).decrypt(p.read_bytes(), ttl=ttl)
+            data = self.serializer.loads(plaintext.decode('utf-8'))
+            return self.session_class(initial=data, sid=sid, key=key)
+        except (InvalidToken, ValueError, OSError):
+            return self.session_class(new=True)
+
+    def save_session(self, app, session, response):
+        cookie_name = app.config['SESSION_COOKIE_NAME']
+        domain = self.get_cookie_domain(app)
+        path = self.get_cookie_path(app)
+        if not session:
+            if not session.new:
+                try:
+                    self._path(session.sid).unlink(missing_ok=True)
+                except OSError:
+                    pass
+            response.delete_cookie(cookie_name, domain=domain, path=path)
+            return
+        if not session.modified and not session.new:
+            return
+        plaintext = self.serializer.dumps(dict(session)).encode('utf-8')
+        ciphertext = Fernet(self._derive(session.key)).encrypt(plaintext)
+        disk_path = self._path(session.sid)
+        tmp = disk_path.with_suffix('.sess.tmp')
+        tmp.write_bytes(ciphertext)
+        tmp.chmod(0o600)
+        tmp.replace(disk_path)
+        key_b64 = base64.urlsafe_b64encode(session.key).rstrip(b'=').decode('ascii')
+        response.set_cookie(
+            cookie_name,
+            f"{session.sid}.{key_b64}",
+            expires=datetime.now(timezone.utc) + app.config['PERMANENT_SESSION_LIFETIME'],
+            httponly=app.config.get('SESSION_COOKIE_HTTPONLY', True),
+            secure=app.config.get('SESSION_COOKIE_SECURE', False),
+            samesite=app.config.get('SESSION_COOKIE_SAMESITE', 'Lax'),
+            domain=domain,
+            path=path,
+        )
+
+
+app.session_interface = EncryptedFilesystemSessionInterface(_SESSION_DIR, _PEPPER)
+print(f"Session backend: encrypted-filesystem (dir={_SESSION_DIR})")
 
 # ── OIDC config (single-provider env var fallback) ────────────────────────────
 OIDC_DISCOVERY_URL     = os.environ.get('OIDC_DISCOVERY_URL', '')
@@ -251,7 +385,7 @@ def inject_globals():
         'nav_has_refresh': bool(raw.get('refresh_token')) if raw else False,
         'nav_providers':   PROVIDERS,
         'nav_multi_provider': MULTI_PROVIDER,
-
+        'nav_session_expires_at': session.get('session_expires_at') if session.get('user') else None,
     }
 
 
@@ -485,6 +619,12 @@ def _handle_callback(provider_id: str):
         or userinfo.get('email')
         or userinfo.get('sub', 'authenticated')
     )
+    # Session lifetime is independent of the JWT lifetime — once it expires,
+    # the user is logged out regardless of token validity.
+    session.permanent = True
+    session['session_expires_at'] = (
+        datetime.now(timezone.utc) + app.config['PERMANENT_SESSION_LIFETIME']
+    ).timestamp()
     return redirect(url_for('claims'))
 
 
