@@ -12,6 +12,8 @@ from urllib.parse import urlencode, urlparse
 
 import requests as http_requests
 from authlib.integrations.flask_client import OAuth
+from authlib.jose.errors import JoseError as _JoseError
+from authlib.oidc.core import CodeIDToken as _CodeIDToken
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -392,6 +394,22 @@ def inject_globals():
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+class _PermissiveIDToken(_CodeIDToken):
+    """IDToken subclass that tolerates non-standard JWT header parameters.
+
+    Some providers (e.g. Kanidm) include implementation-specific params such as
+    'client_id' in the JWT header. RFC 7519 does not forbid this, but Authlib's
+    default validator enforces a strict allowlist and raises UnsupportedError.
+    All other claims checks (alg, exp, iss, aud, nonce) remain fully enforced.
+    """
+    def validate_header(self):
+        try:
+            super().validate_header()
+        except _JoseError as exc:
+            if 'in header' not in str(exc):
+                raise
+
+
 def _b64_decode(s: str) -> bytes:
     s += '=' * (-len(s) % 4)
     return base64.urlsafe_b64decode(s)
@@ -614,11 +632,11 @@ def _handle_callback(provider_id: str):
         return redirect(url_for('index'))
 
     alg = provider.get('token_signing_alg', '').strip()
-    claims_options = {'alg': {'values': [alg]}} if alg else {}
+    token_kwargs = {'claims_cls': _PermissiveIDToken}
+    if alg:
+        token_kwargs['claims_options'] = {'alg': {'values': [alg]}}
     try:
-        token = oauth.create_client(provider_id).authorize_access_token(
-            **({"claims_options": claims_options} if claims_options else {})
-        )
+        token = oauth.create_client(provider_id).authorize_access_token(**token_kwargs)
     except Exception as exc:
         flash(f'Authentication failed: {exc}', 'error')
         return redirect(url_for('index'))
