@@ -26,6 +26,39 @@
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px;
 }
+
+/* JWT structure diagram (header.payload.signature, colour-coded) */
+.jwt-anatomy {
+  font-family: var(--mono); font-size: 0.85rem; word-break: break-all;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; line-height: 1.7;
+}
+.jwt-anatomy .jwt-header { color: #e63946; }
+.jwt-anatomy .jwt-payload { color: #4361ee; }
+.jwt-anatomy .jwt-sig { color: #6c757d; }
+.jwt-legend { display:flex; gap:14px; font-size:0.75rem; margin-top:8px; color:var(--muted); flex-wrap:wrap; }
+.jwt-legend span { display:inline-flex; align-items:center; gap:5px; }
+.jwt-legend .swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+/* "How to get a JWT" cards (relocated from /decode) */
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.help-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; font-size: 0.8125rem;
+}
+.help-card-title { font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.help-card p { color: var(--muted); margin: 0 0 6px; line-height: 1.5; }
+.help-card p:last-child { margin-bottom: 0; }
+.help-card code { font-size: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
+.help-card pre {
+  font-size: 0.72rem; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px 10px; margin: 6px 0 0;
+  overflow-x: auto; white-space: pre; line-height: 1.55;
+}
 {% endblock %}
 
 {% block content %}
@@ -42,6 +75,7 @@
         <button class="tab-btn{% if active_tab == 'scopes' %} active{% endif %}"       data-tab="scopes">Scopes &amp; Claims</button>
         <button class="tab-btn{% if active_tab == 'flow' %} active{% endif %}"         data-tab="flow">OIDC Flow</button>
         <button class="tab-btn{% if active_tab == 'brokering' or active_tab == 'federated' %} active{% endif %}" data-tab="brokering">Identity Brokering</button>
+        <button class="tab-btn{% if active_tab == 'jwt' %} active{% endif %}"            data-tab="jwt">JWT</button>
       </div>
     </div>
 
@@ -266,6 +300,115 @@
         this tool's <code>/callback</code> URL as a valid redirect URI. For multi-provider deployments,
         each provider has its own path (<code>/callback/&lt;provider_id&gt;</code>). Check the OIDC
         Flow tab for the full callback sequence.
+      </div>
+    </div>
+
+    {# ── JWT ── #}
+    <div class="tab-panel{% if active_tab == 'jwt' %} active{% endif %}" data-panel="jwt"
+         style="padding:20px;">
+
+      <h3 style="margin-bottom:8px;">What is a JWT?</h3>
+      <p class="text-muted">
+        A <strong>JSON Web Token</strong> (JWT, <a href="https://www.rfc-editor.org/rfc/rfc7519" target="_blank" rel="noopener">RFC 7519</a>)
+        is a compact, URL-safe representation of claims passed between two parties.
+        OIDC uses JWTs for the <strong>ID token</strong> (about the user) and frequently also for
+        <strong>access tokens</strong> (authorisation to call APIs) and <strong>refresh tokens</strong>
+        (long-lived material to mint new access tokens).
+      </p>
+
+      <h4 style="margin-top:18px;">Anatomy</h4>
+      <p class="text-muted">
+        A JWT is three base64url-encoded segments joined with dots:
+      </p>
+      <div class="jwt-anatomy">
+        <span class="jwt-header">eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9</span><span class="jwt-sig">.</span><span class="jwt-payload">eyJzdWIiOiJ1c2VyMTIzIiwiaXNzIjoiaHR0cHM6Ly9pZHAifQ</span><span class="jwt-sig">.</span><span class="jwt-sig">MEUCIQDg…signature…bytes</span>
+      </div>
+      <div class="jwt-legend">
+        <span><span class="swatch" style="background:#e63946"></span> header — algorithm + token type</span>
+        <span><span class="swatch" style="background:#4361ee"></span> payload — the claims</span>
+        <span><span class="swatch" style="background:#6c757d"></span> signature — proves the issuer signed it</span>
+      </div>
+
+      <h4 style="margin-top:18px;">JWS vs JWE</h4>
+      <p class="text-muted">
+        The form above is a <strong>JWS</strong> (JSON Web Signature, <a href="https://www.rfc-editor.org/rfc/rfc7515" target="_blank" rel="noopener">RFC 7515</a>):
+        signed but not encrypted, so anyone can read the payload. ID tokens and most access tokens are JWS.
+      </p>
+      <p class="text-muted">
+        A <strong>JWE</strong> (JSON Web Encryption, <a href="https://www.rfc-editor.org/rfc/rfc7516" target="_blank" rel="noopener">RFC 7516</a>)
+        has <strong>five</strong> dot-separated segments and is encrypted — the payload can only be read
+        by the holder of the recipient's private key. Some providers (notably Kanidm) issue
+        refresh tokens as JWEs; this tool can detect that but cannot decrypt them.
+      </p>
+
+      <h4 style="margin-top:18px;">Why this tool doesn't verify by default</h4>
+      <p class="text-muted">
+        Decoding a JWT (parsing the payload) requires no secret. <strong>Verifying</strong> the
+        signature requires the issuer's public key (from their JWKS endpoint). For diagnostics
+        you almost always want to inspect a token regardless of whether you have the key —
+        that's the design here. The <strong>Verify signature (JWKS)</strong> panel that appears
+        under a decoded token does the verification on demand against a JWKS URL.
+      </p>
+
+      <h3 style="margin-top:24px;">How to get a JWT</h3>
+      <div class="help-grid">
+
+        <div class="help-card">
+          <div class="help-card-title">&#127381; From this tool</div>
+          <p>Log in via the main page, then open the <strong>Raw JWT</strong> tab on the Claims page.
+             Each token has a <strong>Copy</strong> button — paste it into the decoder.</p>
+          <p>The Raw tab shows the ID token, access token, and refresh token in their original
+             dot-separated form, colour-coded by part.</p>
+        </div>
+
+        <div class="help-card">
+          <div class="help-card-title">&#128269; Browser DevTools</div>
+          <p>Open DevTools (<code>F12</code>), go to the <strong>Network</strong> tab, and trigger a
+             login. Look for the request to the <strong>token endpoint</strong> (usually a POST to
+             <code>/token</code> or <code>/callback</code>).</p>
+          <p>In the response body you'll find <code>access_token</code>, <code>id_token</code>,
+             and optionally <code>refresh_token</code> as dot-separated strings.</p>
+        </div>
+
+        <div class="help-card">
+          <div class="help-card-title">&#128196; From an Authorization header</div>
+          <p>If your app attaches Bearer tokens to API calls, intercept a request in DevTools
+             (<strong>Network</strong> → request → <strong>Headers</strong>) and copy the value
+             after <code>Bearer </code>.</p>
+          <p>Alternatively, capture traffic with a proxy like Burp Suite or mitmproxy and extract
+             the token from the <code>Authorization</code> header.</p>
+        </div>
+
+        <div class="help-card">
+          <div class="help-card-title">&#9000; curl (client credentials)</div>
+          <p>For server-to-server flows or quick tests, fetch a token directly from the token
+             endpoint:</p>
+          <pre>curl -s -X POST \
+  https://your-provider/token \
+  -d grant_type=client_credentials \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_SECRET \
+  | jq -r .access_token</pre>
+          <p>Replace the URL and credentials with your provider's token endpoint
+             (visible in <strong>Provider Metadata</strong> on the home page).</p>
+        </div>
+
+        <div class="help-card">
+          <div class="help-card-title">&#128274; Keycloak admin console</div>
+          <p>In the Keycloak admin UI go to <strong>Realm → Sessions</strong>, click a user session,
+             then click <strong>Show tokens</strong> to view raw access and ID tokens.</p>
+          <p>You can also use the <strong>Evaluate</strong> tab under a client's <strong>Client scopes</strong>
+             section to generate a sample token for any user without a full login flow.</p>
+        </div>
+
+        <div class="help-card">
+          <div class="help-card-title">&#9888; What this decoder does not do</div>
+          <p>Signatures are <strong>not verified</strong> by default — any three-part dot-separated
+             string will decode. This is intentional for diagnostics.</p>
+          <p>Use the <strong>Verify signature (JWKS)</strong> panel that appears under a decoded
+             token to check signature validity against the provider's JWKS.</p>
+        </div>
+
       </div>
     </div>
   </div>

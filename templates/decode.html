@@ -37,51 +37,19 @@
 .timeline-legend span { display: flex; align-items: center; gap: 4px; }
 .tl-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-/* Token diff */
-.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-@media (max-width: 640px) { .diff-grid { grid-template-columns: 1fr; } }
+/* Token diff (output table — Compare textareas removed v0.2.4, runDiff still drives this) */
 .diff-only-a { background: #fff0f0; }
 .diff-only-b { background: #f0f8ff; }
 .diff-changed { background: #fffbeb; }
 
 /* History table */
 .hist-row:hover { background: var(--surface2); }
-.hist-check { cursor: pointer; }
+.hist-delete:hover { color: var(--red); border-color: var(--red); }
 
-/* Help section */
-.help-toggle { margin-bottom: 20px; }
-.help-toggle summary {
-  list-style: none; cursor: pointer;
-  font-size: 0.8125rem; color: var(--muted); font-weight: 500;
-  display: inline-flex; align-items: center; gap: 6px;
-  user-select: none;
-}
-.help-toggle summary::-webkit-details-marker { display: none; }
-.help-toggle summary::before { content: '▶'; font-size: 0.6rem; }
-.help-toggle[open] summary::before { content: '▼'; }
-.help-toggle summary:hover { color: var(--text); }
-.help-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-.help-card {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 14px 16px;
-  font-size: 0.8125rem;
-}
-.help-card-title {
-  font-weight: 600; margin-bottom: 6px;
-  display: flex; align-items: center; gap: 6px;
-}
-.help-card p { color: var(--muted); margin: 0 0 6px; line-height: 1.5; }
-.help-card p:last-child { margin-bottom: 0; }
-.help-card code { font-size: 0.75rem; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
-.help-card pre {
-  font-size: 0.72rem; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 4px; padding: 8px 10px; margin: 6px 0 0;
-  overflow-x: auto; white-space: pre; line-height: 1.55;
+/* Section heading for always-expanded blocks (history, verify) */
+.decode-section-h {
+  font-size: 0.8125rem; font-weight: 600; color: var(--muted);
+  margin: 24px 0 8px; display:flex; align-items:center; gap:8px;
 }
 {% endblock %}
 
@@ -104,6 +72,8 @@
           <a href="{{ url_for('decode_tool') }}" class="btn btn-ghost">Clear</a>
           {% endif %}
           <button type="button" class="btn btn-ghost" id="paste-btn">&#x2398; Paste from clipboard</button>
+          <a href="{{ url_for('reference', tab='jwt') }}" class="btn btn-ghost"
+             title="What is a JWT, and how do I get one?">&#10067; Help</a>
         </div>
       </form>
     </div>
@@ -111,72 +81,85 @@
 
   {# ── Load from active session ── #}
   {% if session_token_types %}
+  {% macro session_token_btn(key, label) -%}
+    {% if key in session_token_jwes %}
+      <span class="badge" style="background:var(--surface2);color:var(--muted);font-weight:500;padding:6px 10px;"
+            title="This token is encrypted (JWE) and cannot be decoded by this tool">
+        {{ label }} <span style="opacity:.7;">(encrypted JWE)</span>
+      </span>
+    {% else %}
+      <a href="{{ url_for('decode_tool', from_session=1, token_type=key) }}" class="btn btn-ghost btn-sm">{{ label }}</a>
+    {% endif %}
+  {%- endmacro %}
   <div class="card" style="margin-bottom:20px;padding:12px 18px;">
     <div style="font-size:0.8125rem;font-weight:600;margin-bottom:10px;color:var(--muted);">Load from active session</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      {% if 'id_token' in session_token_types %}
-      <a href="{{ url_for('decode_tool', from_session=1, token_type='id_token') }}" class="btn btn-ghost btn-sm">ID Token</a>
-      {% endif %}
-      {% if 'access_token' in session_token_types %}
-      <a href="{{ url_for('decode_tool', from_session=1, token_type='access_token') }}" class="btn btn-ghost btn-sm">Access Token</a>
-      {% endif %}
-      {% if 'refresh_token' in session_token_types %}
-      <a href="{{ url_for('decode_tool', from_session=1, token_type='refresh_token') }}" class="btn btn-ghost btn-sm">Refresh Token</a>
-      {% endif %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      {% if 'id_token'      in session_token_types %}{{ session_token_btn('id_token', 'ID Token') }}{% endif %}
+      {% if 'access_token'  in session_token_types %}{{ session_token_btn('access_token', 'Access Token') }}{% endif %}
+      {% if 'refresh_token' in session_token_types %}{{ session_token_btn('refresh_token', 'Refresh Token') }}{% endif %}
     </div>
   </div>
   {% endif %}
 
-  {# ── Recent decodes ── #}
+  {# ── Recent decodes (always expanded) ── #}
   {% if decoder_history %}
   <script>const DECODER_HISTORY = {{ decoder_history | tojson }};</script>
-  <details class="help-toggle" style="margin-bottom:20px;" id="history-section">
-    <summary>Recent decodes ({{ decoder_history | length }})</summary>
-    <div style="margin-top:12px;">
-      <div class="table-wrap">
-        <table style="font-size:0.8125rem;">
-          <thead>
-            <tr>
-              <th style="width:28px;padding:4px 8px;"></th>
-              <th style="padding:4px 8px;">Token</th>
-              <th style="padding:4px 8px;width:68px;">Type</th>
-              <th style="padding:4px 8px;width:88px;">Decoded</th>
-              <th style="padding:4px 8px;text-align:right;">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for entry in decoder_history %}
-            <tr class="hist-row">
-              <td style="padding:6px 8px;">
-                <input type="checkbox" class="hist-check" data-hash="{{ entry.hash }}" onchange="onHistoryCheck()">
-              </td>
-              <td style="padding:6px 8px;font-weight:500;">{{ entry.label }}</td>
-              <td style="padding:6px 8px;">
-                {% if entry.token_type == 'ID' %}<span class="badge badge-blue">ID</span>
-                {% elif entry.token_type == 'Access' %}<span class="badge badge-green">Access</span>
-                {% elif entry.token_type == 'Refresh' %}<span class="badge badge-gray">Refresh</span>
-                {% else %}<span class="badge">{{ entry.token_type }}</span>{% endif %}
-              </td>
-              <td style="padding:6px 8px;color:var(--muted);" class="hist-ts" data-ts="{{ entry.ts }}"></td>
-              <td style="padding:6px 8px;text-align:right;white-space:nowrap;">
-                <button class="btn btn-xs btn-ghost" onclick="histRecall('{{ entry.hash }}')">Recall</button>
-                <button class="btn btn-xs btn-ghost" onclick="histLoadDiff('{{ entry.hash }}','a')">&#10142; A</button>
-                <button class="btn btn-xs btn-ghost" onclick="histLoadDiff('{{ entry.hash }}','b')">&#10142; B</button>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px;">
-        <button id="hist-compare-btn" class="btn btn-primary btn-sm" style="display:none;" onclick="histCompareSelected()">Compare selected</button>
-        <span></span>
-        <form method="post" action="{{ url_for('decode_history_clear') }}" style="display:inline;">
-          <button type="submit" class="btn btn-xs btn-ghost" style="color:var(--muted);">Clear history</button>
-        </form>
-      </div>
+  <div id="history-section" style="margin-bottom:20px;">
+    <div class="decode-section-h">
+      <span>Recent decodes ({{ decoder_history | length }})</span>
+      <span style="flex:1;"></span>
+      <span id="hist-diff-banner" style="display:none;font-weight:500;color:var(--primary);"></span>
+      <a href="#" id="hist-diff-clear" onclick="histClearDiff(); return false;" style="display:none;font-size:0.75rem;color:var(--muted);">× clear comparison</a>
     </div>
-  </details>
+    <div class="table-wrap">
+      <table style="font-size:0.8125rem;">
+        <thead>
+          <tr>
+            <th style="padding:4px 8px;">Token</th>
+            <th style="padding:4px 8px;width:68px;">Type</th>
+            <th style="padding:4px 8px;width:88px;">Decoded</th>
+            <th style="padding:4px 8px;text-align:right;">Compare</th>
+            <th style="padding:4px 8px;text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in decoder_history %}
+          <tr class="hist-row" data-hash="{{ entry.hash }}">
+            <td style="padding:6px 8px;font-weight:500;">{{ entry.label }}</td>
+            <td style="padding:6px 8px;">
+              {% if entry.token_type == 'ID' %}<span class="badge badge-blue">ID</span>
+              {% elif entry.token_type == 'Access' %}<span class="badge badge-green">Access</span>
+              {% elif entry.token_type == 'Refresh' %}<span class="badge badge-gray">Refresh</span>
+              {% else %}<span class="badge">{{ entry.token_type }}</span>{% endif %}
+            </td>
+            <td style="padding:6px 8px;color:var(--muted);" class="hist-ts" data-ts="{{ entry.ts }}"></td>
+            <td style="padding:6px 8px;text-align:right;white-space:nowrap;">
+              <button class="btn btn-xs btn-ghost hist-toggle-a" data-hash="{{ entry.hash }}"
+                      onclick="histToggleDiff('{{ entry.hash }}','a')" title="Use as Token A in comparison">A</button>
+              <button class="btn btn-xs btn-ghost hist-toggle-b" data-hash="{{ entry.hash }}"
+                      onclick="histToggleDiff('{{ entry.hash }}','b')" title="Use as Token B in comparison">B</button>
+            </td>
+            <td style="padding:6px 8px;text-align:right;white-space:nowrap;">
+              <button class="btn btn-xs btn-ghost" onclick="histRecall('{{ entry.hash }}')" title="Re-decode this token">Recall</button>
+              <form method="post" action="{{ url_for('decode_history_delete') }}" style="display:inline;">
+                <input type="hidden" name="hash" value="{{ entry.hash }}">
+                <button type="submit" class="btn btn-xs btn-ghost hist-delete"
+                        title="Remove from history">&#x2715;</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {# Inline diff target — populated client-side when both A and B are toggled #}
+    <div id="hist-diff-results" style="margin-top:14px;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+      <form method="post" action="{{ url_for('decode_history_clear') }}" style="display:inline;">
+        <button type="submit" class="btn btn-xs btn-ghost" style="color:var(--muted);">Clear all history</button>
+      </form>
+    </div>
+  </div>
   {% endif %}
 
   {% if token_input %}
@@ -325,111 +308,24 @@
     {% endif %}
   {% endif %}
 
-  {# ── Tools (verify, compare, help) — placed after the decoded output so the page leads with the result ── #}
-  {# ── Verify signature ── #}
-  <details class="help-toggle" style="margin-bottom:20px;" id="verify-section">
-    <summary>Verify signature (JWKS)</summary>
-    <div style="margin-top:12px;">
-      <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">JWKS URI</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
-        <input id="jwks-uri" type="url" class="token-textarea"
-               style="flex:1;min-width:200px;min-height:unset;padding:6px 10px;font-size:0.8125rem;"
-               placeholder="https://provider/.well-known/jwks.json"
-               value="{{ decoded.jwks_uri if decoded and decoded.jwks_uri else jwks_uri }}">
-        <button class="btn btn-primary btn-sm" onclick="runVerify()" style="white-space:nowrap;">&#10003; Verify</button>
-      </div>
-      <p class="text-muted" style="font-size:0.75rem;margin-top:6px;">
-        Fetches the JWKS, finds the key matching the token's <code>kid</code>, and verifies the signature locally.
-        Supports RS256/384/512, PS256/384/512, ES256/384/512.
-      </p>
-      <div id="verify-result" style="margin-top:10px;"></div>
+  {# ── Verify signature (JWKS) — only when a JWS has been decoded ── #}
+  {% if decoded and not decoded.error and not decoded.jwe %}
+  <div id="verify-section" style="margin-bottom:20px;">
+    <div class="decode-section-h">Verify signature (JWKS)</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+      <input id="jwks-uri" type="url" class="token-textarea"
+             style="flex:1;min-width:200px;min-height:unset;padding:6px 10px;font-size:0.8125rem;"
+             placeholder="https://provider/.well-known/jwks.json"
+             value="{{ decoded.jwks_uri if decoded.jwks_uri else jwks_uri }}">
+      <button class="btn btn-primary btn-sm" onclick="runVerify()" style="white-space:nowrap;">&#10003; Verify</button>
     </div>
-  </details>
-
-  {# ── Compare two tokens ── #}
-  <details class="help-toggle" style="margin-bottom:20px;" id="diff-section">
-    <summary>Compare two tokens</summary>
-    <div class="diff-grid" style="margin-top:12px;">
-      <div>
-        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token A</div>
-        <textarea id="diff-a" class="token-textarea" style="min-height:80px;"
-                  placeholder="Paste first JWT…">{% if token_input %}{{ token_input }}{% endif %}</textarea>
-      </div>
-      <div>
-        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token B</div>
-        <textarea id="diff-b" class="token-textarea" style="min-height:80px;"
-                  placeholder="Paste second JWT…"></textarea>
-      </div>
-    </div>
-    <button class="btn btn-primary btn-sm" onclick="runDiff()">Compare</button>
-    <div id="diff-results" style="margin-top:14px;"></div>
-  </details>
-
-  {# ── How to get a JWT ── #}
-  <details class="help-toggle">
-    <summary>How to get a JWT token</summary>
-    <div class="help-grid">
-
-      <div class="help-card">
-        <div class="help-card-title">&#127381; From this tool</div>
-        <p>Log in via the main page, then open the <strong>Raw JWT</strong> tab on the Claims page.
-           Each token has a <strong>Copy</strong> button — paste it here.</p>
-        <p>The Raw tab shows the ID token, access token, and refresh token in their original
-           dot-separated form, colour-coded by part.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128269; Browser DevTools</div>
-        <p>Open DevTools (<code>F12</code>), go to the <strong>Network</strong> tab, and trigger a
-           login. Look for the request to the <strong>token endpoint</strong> (usually a POST to
-           <code>/token</code> or <code>/callback</code>).</p>
-        <p>In the response body you'll find <code>access_token</code>, <code>id_token</code>,
-           and optionally <code>refresh_token</code> as dot-separated strings.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128196; From an Authorization header</div>
-        <p>If your app attaches Bearer tokens to API calls, intercept a request in DevTools
-           (<strong>Network</strong> → request → <strong>Headers</strong>) and copy the value
-           after <code>Bearer </code>.</p>
-        <p>Alternatively, capture traffic with a proxy like Burp Suite or mitmproxy and extract
-           the token from the <code>Authorization</code> header.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#9000; curl (client credentials)</div>
-        <p>For server-to-server flows or quick tests, fetch a token directly from the token
-           endpoint:</p>
-        <pre>curl -s -X POST \
-  https://your-provider/token \
-  -d grant_type=client_credentials \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_SECRET \
-  | jq -r .access_token</pre>
-        <p>Replace the URL and credentials with your provider's token endpoint
-           (visible in <strong>Provider Metadata</strong> on the home page).</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128274; Keycloak admin console</div>
-        <p>In the Keycloak admin UI go to <strong>Realm → Sessions</strong>, click a user session,
-           then click <strong>Show tokens</strong> to view raw access and ID tokens.</p>
-        <p>You can also use the <strong>Evaluate</strong> tab under a client's <strong>Client scopes</strong>
-           section to generate a sample token for any user without a full login flow.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#9888; What this decoder does not do</div>
-        <p>Signatures are <strong>not verified</strong> — any three-part dot-separated string will
-           decode. This is intentional for diagnostics: you can inspect tokens from any provider
-           without needing the signing key.</p>
-        <p>To verify a token's signature, use the provider's <strong>JWKS URI</strong>
-           (shown in Provider Metadata) with a tool like <code>jwt.io</code> or a library
-           like <code>python-jose</code>.</p>
-      </div>
-
-    </div>
-  </details>
+    <p class="text-muted" style="font-size:0.75rem;margin-top:6px;">
+      Fetches the JWKS, finds the key matching the token's <code>kid</code>, and verifies the signature locally.
+      Supports RS256/384/512, PS256/384/512, ES256/384/512.
+    </p>
+    <div id="verify-result" style="margin-top:10px;"></div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -636,14 +532,18 @@
     if (typeof v === 'object') return JSON.stringify(v);
     return String(v);
   }
-  function runDiff() {
-    const ta = document.getElementById('diff-a').value.trim();
-    const tb = document.getElementById('diff-b').value.trim();
-    const out = document.getElementById('diff-results');
-    if (!ta || !tb) { out.innerHTML = '<p class="text-muted" style="font-size:0.8125rem;">Paste tokens in both fields.</p>'; return; }
-    const da = jwtDecode(ta), db = jwtDecode(tb);
-    if (!da) { out.innerHTML = '<div class="alert alert-error">Token A is not a valid JWT.</div>'; return; }
-    if (!db) { out.innerHTML = '<div class="alert alert-error">Token B is not a valid JWT.</div>'; return; }
+
+  // Render a payload diff between two raw JWT strings into outputEl.
+  // Caller is responsible for handing in the right tokens — there are no
+  // textareas to read from any more (the comparison flow is driven from
+  // history toggles).
+  function runDiff(rawA, rawB, outputEl) {
+    const out = outputEl || document.getElementById('hist-diff-results');
+    if (!out) return;
+    if (!rawA || !rawB) { out.innerHTML = ''; return; }
+    const da = jwtDecode(rawA), db = jwtDecode(rawB);
+    if (!da)        { out.innerHTML = '<div class="alert alert-error">Token A is not a valid JWT.</div>'; return; }
+    if (!db)        { out.innerHTML = '<div class="alert alert-error">Token B is not a valid JWT.</div>'; return; }
     if (da.jwe || db.jwe) { out.innerHTML = '<div class="alert alert-info">One or both tokens are encrypted JWEs — diff is not applicable.</div>'; return; }
 
     const pa = da.payload, pb = db.payload;
@@ -669,7 +569,6 @@
     }
     html += '</tbody></table></div>';
 
-    // Header diff summary
     const headerDiff = JSON.stringify(da.header) !== JSON.stringify(db.header);
     if (headerDiff) {
       html = `<div class="alert alert-warning" style="margin-bottom:8px;">
@@ -695,31 +594,60 @@
     document.querySelector('textarea[name="token"]').closest('form').submit();
   }
 
-  function histLoadDiff(hash, slot) {
-    const entry = (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === hash);
-    if (!entry) return;
-    const diffSection = document.getElementById('diff-section');
-    if (diffSection) diffSection.open = true;
-    const ta = document.getElementById('diff-' + slot);
-    if (ta) { ta.value = entry.token_raw; ta.focus(); }
+  // Comparison state — which history entry is currently slotted as A / B.
+  // Hashes only; we look up token_raw from DECODER_HISTORY when rendering.
+  window.DIFF_A = null;
+  window.DIFF_B = null;
+
+  function _histFindEntry(hash) {
+    return (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === hash);
   }
 
-  function onHistoryCheck() {
-    const checked = document.querySelectorAll('.hist-check:checked');
-    const btn = document.getElementById('hist-compare-btn');
-    if (btn) btn.style.display = checked.length === 2 ? 'inline-flex' : 'none';
-    if (checked.length > 2) this.checked = false;
+  function _histRefreshToggleHighlights() {
+    document.querySelectorAll('.hist-toggle-a').forEach(b => b.classList.toggle('btn-toggle-on', b.dataset.hash === window.DIFF_A));
+    document.querySelectorAll('.hist-toggle-b').forEach(b => b.classList.toggle('btn-toggle-on', b.dataset.hash === window.DIFF_B));
   }
 
-  function histCompareSelected() {
-    const checked = Array.from(document.querySelectorAll('.hist-check:checked'));
-    if (checked.length !== 2) return;
-    const entries = checked.map(cb => (typeof DECODER_HISTORY !== 'undefined') && DECODER_HISTORY.find(e => e.hash === cb.dataset.hash));
-    if (!entries[0] || !entries[1]) return;
-    document.getElementById('diff-a').value = entries[0].token_raw;
-    document.getElementById('diff-b').value = entries[1].token_raw;
-    const diffSection = document.getElementById('diff-section');
-    if (diffSection) { diffSection.open = true; diffSection.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function _histRefreshDiffBanner() {
+    const banner = document.getElementById('hist-diff-banner');
+    const clear  = document.getElementById('hist-diff-clear');
+    if (!banner) return;
+    const ea = window.DIFF_A ? _histFindEntry(window.DIFF_A) : null;
+    const eb = window.DIFF_B ? _histFindEntry(window.DIFF_B) : null;
+    if (!ea && !eb) {
+      banner.style.display = 'none';
+      if (clear) clear.style.display = 'none';
+    } else {
+      banner.style.display = '';
+      if (clear) clear.style.display = '';
+      banner.textContent = `comparing: ${ea ? ea.label : '— pick A'} ↔ ${eb ? eb.label : '— pick B'}`;
+    }
+  }
+
+  function histRenderDiff() {
+    const out = document.getElementById('hist-diff-results');
+    if (!out) return;
+    const ea = window.DIFF_A ? _histFindEntry(window.DIFF_A) : null;
+    const eb = window.DIFF_B ? _histFindEntry(window.DIFF_B) : null;
+    if (!ea || !eb) { out.innerHTML = ''; return; }
+    runDiff(ea.token_raw, eb.token_raw, out);
+  }
+
+  function histToggleDiff(hash, slot) {
+    const slotKey = slot === 'a' ? 'DIFF_A' : 'DIFF_B';
+    window[slotKey] = (window[slotKey] === hash) ? null : hash;
+    _histRefreshToggleHighlights();
+    _histRefreshDiffBanner();
+    histRenderDiff();
+  }
+
+  function histClearDiff() {
+    window.DIFF_A = null;
+    window.DIFF_B = null;
+    _histRefreshToggleHighlights();
+    _histRefreshDiffBanner();
+    const out = document.getElementById('hist-diff-results');
+    if (out) out.innerHTML = '';
   }
 </script>
 {% endblock %}
