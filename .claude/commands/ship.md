@@ -82,3 +82,24 @@ If the merge fails (e.g. merge conflicts or failing checks), report the error cl
 ## 8. Confirm
 
 Run `git log main --oneline -5` after switching back to main (`git checkout main && git pull`) to confirm the merge landed, and print the final commit SHA to the user.
+
+## 9. Tag and release (if this is a version branch)
+
+Check whether the branch name (captured in step 1) matches the semver pattern `v[0-9]+.[0-9]+.[0-9]+` (e.g. `v0.2.0`).
+
+**If it matches:**
+1. Create an annotated tag on main pointing at the merge commit:
+   ```bash
+   git tag -a <branch-name> -m "Release <branch-name>"
+   ```
+2. Push the tag to origin:
+   ```bash
+   git push origin <branch-name>
+   ```
+3. Tell the user the tag was pushed and that the GitHub Actions release workflow has been triggered. Show them the Actions URL: `https://github.com/<owner>/<repo>/actions`
+
+**If it does not match:**
+Tell the user no tag was pushed (this branch isn't a release branch). If they want to trigger a release manually they should run:
+```bash
+git tag -a vX.Y.Z -m "Release vX.Y.Z" && git push origin vX.Y.Z
+```

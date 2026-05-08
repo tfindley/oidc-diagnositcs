@@ -527,7 +527,7 @@
     const out  = document.getElementById('verify-result');
     const uri  = document.getElementById('jwks-uri').value.trim();
     const token = document.querySelector('textarea[name=token]') && document.querySelector('textarea[name=token]').value.trim()
-                || {{ token_input | tojson if token_input else "''" }};
+                || {{ (token_input or '') | tojson }};
     out.innerHTML = '<p class="text-muted" style="font-size:0.8125rem;">Verifying…</p>';
 
     if (!uri)   { out.innerHTML = '<div class="alert alert-error">Enter a JWKS URI.</div>'; return; }
