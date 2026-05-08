@@ -404,13 +404,11 @@ def inject_globals():
 # nonce, and expiry checks remain fully enforced via the regular claims path.
 def _register_provider_extension_headers():
     from joserfc.registry import JWS_HEADER_REGISTRY, HeaderParameter, is_str
+    # joserfc._rfc7515 is a private module — watch for breakage in upstream releases.
     from joserfc._rfc7515.registry import default_registry as _jws_default_registry
-    extensions = {
-        'client_id': HeaderParameter('Client ID (provider extension, e.g. Kanidm)', is_str),
-    }
-    for name, param in extensions.items():
-        JWS_HEADER_REGISTRY.setdefault(name, param)
-        _jws_default_registry.header_registry.setdefault(name, param)
+    client_id = HeaderParameter('Client ID (provider extension, e.g. Kanidm)', is_str)
+    JWS_HEADER_REGISTRY.setdefault('client_id', client_id)
+    _jws_default_registry.header_registry.setdefault('client_id', client_id)
 
 
 _register_provider_extension_headers()

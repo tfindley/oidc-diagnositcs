@@ -179,111 +179,6 @@
   </details>
   {% endif %}
 
-  {# ── How to get a JWT ── #}
-  <details class="help-toggle">
-    <summary>How to get a JWT token</summary>
-    <div class="help-grid">
-
-      <div class="help-card">
-        <div class="help-card-title">&#127381; From this tool</div>
-        <p>Log in via the main page, then open the <strong>Raw JWT</strong> tab on the Claims page.
-           Each token has a <strong>Copy</strong> button — paste it here.</p>
-        <p>The Raw tab shows the ID token, access token, and refresh token in their original
-           dot-separated form, colour-coded by part.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128269; Browser DevTools</div>
-        <p>Open DevTools (<code>F12</code>), go to the <strong>Network</strong> tab, and trigger a
-           login. Look for the request to the <strong>token endpoint</strong> (usually a POST to
-           <code>/token</code> or <code>/callback</code>).</p>
-        <p>In the response body you'll find <code>access_token</code>, <code>id_token</code>,
-           and optionally <code>refresh_token</code> as dot-separated strings.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128196; From an Authorization header</div>
-        <p>If your app attaches Bearer tokens to API calls, intercept a request in DevTools
-           (<strong>Network</strong> → request → <strong>Headers</strong>) and copy the value
-           after <code>Bearer </code>.</p>
-        <p>Alternatively, capture traffic with a proxy like Burp Suite or mitmproxy and extract
-           the token from the <code>Authorization</code> header.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#9000; curl (client credentials)</div>
-        <p>For server-to-server flows or quick tests, fetch a token directly from the token
-           endpoint:</p>
-        <pre>curl -s -X POST \
-  https://your-provider/token \
-  -d grant_type=client_credentials \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_SECRET \
-  | jq -r .access_token</pre>
-        <p>Replace the URL and credentials with your provider's token endpoint
-           (visible in <strong>Provider Metadata</strong> on the home page).</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#128274; Keycloak admin console</div>
-        <p>In the Keycloak admin UI go to <strong>Realm → Sessions</strong>, click a user session,
-           then click <strong>Show tokens</strong> to view raw access and ID tokens.</p>
-        <p>You can also use the <strong>Evaluate</strong> tab under a client's <strong>Client scopes</strong>
-           section to generate a sample token for any user without a full login flow.</p>
-      </div>
-
-      <div class="help-card">
-        <div class="help-card-title">&#9888; What this decoder does not do</div>
-        <p>Signatures are <strong>not verified</strong> — any three-part dot-separated string will
-           decode. This is intentional for diagnostics: you can inspect tokens from any provider
-           without needing the signing key.</p>
-        <p>To verify a token's signature, use the provider's <strong>JWKS URI</strong>
-           (shown in Provider Metadata) with a tool like <code>jwt.io</code> or a library
-           like <code>python-jose</code>.</p>
-      </div>
-
-    </div>
-  </details>
-
-  {# ── Verify signature ── #}
-  <details class="help-toggle" style="margin-bottom:20px;" id="verify-section">
-    <summary>Verify signature (JWKS)</summary>
-    <div style="margin-top:12px;">
-      <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">JWKS URI</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
-        <input id="jwks-uri" type="url" class="token-textarea"
-               style="flex:1;min-width:200px;min-height:unset;padding:6px 10px;font-size:0.8125rem;"
-               placeholder="https://provider/.well-known/jwks.json"
-               value="{{ decoded.jwks_uri if decoded and decoded.jwks_uri else jwks_uri }}">
-        <button class="btn btn-primary btn-sm" onclick="runVerify()" style="white-space:nowrap;">&#10003; Verify</button>
-      </div>
-      <p class="text-muted" style="font-size:0.75rem;margin-top:6px;">
-        Fetches the JWKS, finds the key matching the token's <code>kid</code>, and verifies the signature locally.
-        Supports RS256/384/512, PS256/384/512, ES256/384/512.
-      </p>
-      <div id="verify-result" style="margin-top:10px;"></div>
-    </div>
-  </details>
-
-  {# ── Compare two tokens ── #}
-  <details class="help-toggle" style="margin-bottom:20px;" id="diff-section">
-    <summary>Compare two tokens</summary>
-    <div class="diff-grid" style="margin-top:12px;">
-      <div>
-        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token A</div>
-        <textarea id="diff-a" class="token-textarea" style="min-height:80px;"
-                  placeholder="Paste first JWT…">{% if token_input %}{{ token_input }}{% endif %}</textarea>
-      </div>
-      <div>
-        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token B</div>
-        <textarea id="diff-b" class="token-textarea" style="min-height:80px;"
-                  placeholder="Paste second JWT…"></textarea>
-      </div>
-    </div>
-    <button class="btn btn-primary btn-sm" onclick="runDiff()">Compare</button>
-    <div id="diff-results" style="margin-top:14px;"></div>
-  </details>
-
   {% if token_input %}
     {% if decoded and not decoded.error %}
 
@@ -429,6 +324,112 @@
     <div class="alert alert-warning">Not a valid JWT — must have three dot-separated base64url parts.</div>
     {% endif %}
   {% endif %}
+
+  {# ── Tools (verify, compare, help) — placed after the decoded output so the page leads with the result ── #}
+  {# ── Verify signature ── #}
+  <details class="help-toggle" style="margin-bottom:20px;" id="verify-section">
+    <summary>Verify signature (JWKS)</summary>
+    <div style="margin-top:12px;">
+      <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">JWKS URI</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+        <input id="jwks-uri" type="url" class="token-textarea"
+               style="flex:1;min-width:200px;min-height:unset;padding:6px 10px;font-size:0.8125rem;"
+               placeholder="https://provider/.well-known/jwks.json"
+               value="{{ decoded.jwks_uri if decoded and decoded.jwks_uri else jwks_uri }}">
+        <button class="btn btn-primary btn-sm" onclick="runVerify()" style="white-space:nowrap;">&#10003; Verify</button>
+      </div>
+      <p class="text-muted" style="font-size:0.75rem;margin-top:6px;">
+        Fetches the JWKS, finds the key matching the token's <code>kid</code>, and verifies the signature locally.
+        Supports RS256/384/512, PS256/384/512, ES256/384/512.
+      </p>
+      <div id="verify-result" style="margin-top:10px;"></div>
+    </div>
+  </details>
+
+  {# ── Compare two tokens ── #}
+  <details class="help-toggle" style="margin-bottom:20px;" id="diff-section">
+    <summary>Compare two tokens</summary>
+    <div class="diff-grid" style="margin-top:12px;">
+      <div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token A</div>
+        <textarea id="diff-a" class="token-textarea" style="min-height:80px;"
+                  placeholder="Paste first JWT…">{% if token_input %}{{ token_input }}{% endif %}</textarea>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;font-weight:600;color:var(--muted);margin-bottom:4px;">Token B</div>
+        <textarea id="diff-b" class="token-textarea" style="min-height:80px;"
+                  placeholder="Paste second JWT…"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="runDiff()">Compare</button>
+    <div id="diff-results" style="margin-top:14px;"></div>
+  </details>
+
+  {# ── How to get a JWT ── #}
+  <details class="help-toggle">
+    <summary>How to get a JWT token</summary>
+    <div class="help-grid">
+
+      <div class="help-card">
+        <div class="help-card-title">&#127381; From this tool</div>
+        <p>Log in via the main page, then open the <strong>Raw JWT</strong> tab on the Claims page.
+           Each token has a <strong>Copy</strong> button — paste it here.</p>
+        <p>The Raw tab shows the ID token, access token, and refresh token in their original
+           dot-separated form, colour-coded by part.</p>
+      </div>
+
+      <div class="help-card">
+        <div class="help-card-title">&#128269; Browser DevTools</div>
+        <p>Open DevTools (<code>F12</code>), go to the <strong>Network</strong> tab, and trigger a
+           login. Look for the request to the <strong>token endpoint</strong> (usually a POST to
+           <code>/token</code> or <code>/callback</code>).</p>
+        <p>In the response body you'll find <code>access_token</code>, <code>id_token</code>,
+           and optionally <code>refresh_token</code> as dot-separated strings.</p>
+      </div>
+
+      <div class="help-card">
+        <div class="help-card-title">&#128196; From an Authorization header</div>
+        <p>If your app attaches Bearer tokens to API calls, intercept a request in DevTools
+           (<strong>Network</strong> → request → <strong>Headers</strong>) and copy the value
+           after <code>Bearer </code>.</p>
+        <p>Alternatively, capture traffic with a proxy like Burp Suite or mitmproxy and extract
+           the token from the <code>Authorization</code> header.</p>
+      </div>
+
+      <div class="help-card">
+        <div class="help-card-title">&#9000; curl (client credentials)</div>
+        <p>For server-to-server flows or quick tests, fetch a token directly from the token
+           endpoint:</p>
+        <pre>curl -s -X POST \
+  https://your-provider/token \
+  -d grant_type=client_credentials \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_SECRET \
+  | jq -r .access_token</pre>
+        <p>Replace the URL and credentials with your provider's token endpoint
+           (visible in <strong>Provider Metadata</strong> on the home page).</p>
+      </div>
+
+      <div class="help-card">
+        <div class="help-card-title">&#128274; Keycloak admin console</div>
+        <p>In the Keycloak admin UI go to <strong>Realm → Sessions</strong>, click a user session,
+           then click <strong>Show tokens</strong> to view raw access and ID tokens.</p>
+        <p>You can also use the <strong>Evaluate</strong> tab under a client's <strong>Client scopes</strong>
+           section to generate a sample token for any user without a full login flow.</p>
+      </div>
+
+      <div class="help-card">
+        <div class="help-card-title">&#9888; What this decoder does not do</div>
+        <p>Signatures are <strong>not verified</strong> — any three-part dot-separated string will
+           decode. This is intentional for diagnostics: you can inspect tokens from any provider
+           without needing the signing key.</p>
+        <p>To verify a token's signature, use the provider's <strong>JWKS URI</strong>
+           (shown in Provider Metadata) with a tool like <code>jwt.io</code> or a library
+           like <code>python-jose</code>.</p>
+      </div>
+
+    </div>
+  </details>
 </div>
 {% endblock %}
 
