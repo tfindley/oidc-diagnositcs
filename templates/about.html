@@ -23,7 +23,13 @@
 
 {% block content %}
 <div class="about-wrap">
-  <h1 style="font-size:1.375rem;font-weight:700;margin-bottom:6px;">About</h1>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+    <h1 style="font-size:1.375rem;font-weight:700;margin:0;">About</h1>
+    <span class="badge" style="font-family:var(--mono);font-size:0.75rem;"
+          title="Version baked in at Docker build time from the git tag">
+      v{{ app_version }}
+    </span>
+  </div>
   <p class="text-muted" style="margin-bottom:28px;font-size:0.875rem;">
     OIDC Diagnostic Tool — an open-source SSO diagnostic client for Keycloak, Kanidm, and
     any OpenID Connect-compliant provider.

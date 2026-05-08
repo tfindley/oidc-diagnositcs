@@ -12,8 +12,6 @@ from urllib.parse import urlencode, urlparse
 
 import requests as http_requests
 from authlib.integrations.flask_client import OAuth
-from authlib.jose.errors import JoseError as _JoseError
-from authlib.oidc.core import CodeIDToken as _CodeIDToken
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -210,6 +208,9 @@ if BANNER_TYPE not in {'info', 'warning', 'error', 'success'}:
     BANNER_TYPE = 'info'
 GITHUB_URL      = 'https://github.com/tfindley/oidc-diagnositcs'
 KOFI_URL        = 'https://ko-fi.com/tfindley'
+# Set at Docker build time from the git tag (release.yml passes APP_VERSION
+# as a build-arg). Falls back to 'dev' for local runs and unreleased builds.
+APP_VERSION     = os.environ.get('APP_VERSION', 'dev')
 
 # ── Multi-provider configuration ──────────────────────────────────────────────
 # If providers.yml is present it overrides the single-provider env var config.
@@ -379,6 +380,7 @@ def inject_globals():
     return {
         'github_url':      GITHUB_URL,
         'kofi_url':        KOFI_URL,
+        'app_version':     APP_VERSION,
         'show_config':     SHOW_CONFIG,
         'privacy_notice':  PRIVACY_NOTICE,
         'banner_text':     BANNER_TEXT,
@@ -394,20 +396,24 @@ def inject_globals():
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-class _PermissiveIDToken(_CodeIDToken):
-    """IDToken subclass that tolerates non-standard JWT header parameters.
+# Some providers (notably Kanidm) include implementation-specific parameters
+# such as 'client_id' in the JWT header. Authlib delegates JWT decoding to the
+# joserfc library, whose strict header allowlist rejects unregistered keys with
+# UnsupportedHeaderError before claims validation ever runs. Register these
+# known-OK extension headers so decoding succeeds; signature, issuer, audience,
+# nonce, and expiry checks remain fully enforced via the regular claims path.
+def _register_provider_extension_headers():
+    from joserfc.registry import JWS_HEADER_REGISTRY, HeaderParameter, is_str
+    from joserfc._rfc7515.registry import default_registry as _jws_default_registry
+    extensions = {
+        'client_id': HeaderParameter('Client ID (provider extension, e.g. Kanidm)', is_str),
+    }
+    for name, param in extensions.items():
+        JWS_HEADER_REGISTRY.setdefault(name, param)
+        _jws_default_registry.header_registry.setdefault(name, param)
 
-    Some providers (e.g. Kanidm) include implementation-specific params such as
-    'client_id' in the JWT header. RFC 7519 does not forbid this, but Authlib's
-    default validator enforces a strict allowlist and raises UnsupportedError.
-    All other claims checks (alg, exp, iss, aud, nonce) remain fully enforced.
-    """
-    def validate_header(self):
-        try:
-            super().validate_header()
-        except _JoseError as exc:
-            if 'in header' not in str(exc):
-                raise
+
+_register_provider_extension_headers()
 
 
 def _b64_decode(s: str) -> bytes:
@@ -632,11 +638,11 @@ def _handle_callback(provider_id: str):
         return redirect(url_for('index'))
 
     alg = provider.get('token_signing_alg', '').strip()
-    token_kwargs = {'claims_cls': _PermissiveIDToken}
-    if alg:
-        token_kwargs['claims_options'] = {'alg': {'values': [alg]}}
+    claims_options = {'alg': {'values': [alg]}} if alg else {}
     try:
-        token = oauth.create_client(provider_id).authorize_access_token(**token_kwargs)
+        token = oauth.create_client(provider_id).authorize_access_token(
+            **({"claims_options": claims_options} if claims_options else {})
+        )
     except Exception as exc:
         flash(f'Authentication failed: {exc}', 'error')
         return redirect(url_for('index'))
