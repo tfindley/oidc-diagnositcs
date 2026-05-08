@@ -567,11 +567,6 @@
         <span id="nav-session-countdown">…</span>
       </span>
       {% endif %}
-      <a href="{{ url_for('logout') }}" class="btn btn-ghost btn-sm"
-         title="Sign out and clear all server-side session data (encrypted session file is removed from the container)"
-         style="padding:4px 9px;">
-        &#x2715; Sign out
-      </a>
       <div class="help-menu" id="user-menu">
         <button class="btn btn-ghost btn-sm" onclick="toggleUserMenu()" aria-haspopup="true">
           {{ session.get('user') }} &#9660;

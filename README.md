@@ -45,13 +45,16 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 
 - **Standalone decoder** — paste any token and decode it without logging in
 - **Token visualiser** — colour-coded header · payload · signature display
-- **Token type detection** — automatically labels tokens as ID, Access, or Refresh based on header `typ` and payload claims (supports Keycloak, RFC 9068, and standard OIDC conventions)
-- **Claim descriptions** — hover over any claim key for a plain-English description; also shown in the token diff table
+- **Token type detection** — labels tokens as ID, Access, or Refresh from header `typ` (Keycloak, RFC 9068) with payload-claim fallback (`nonce` → ID, `scope`/`scp` → Access) for providers like Kanidm that emit no `typ`
+- **JWE detection** — encrypted refresh tokens (5-part JWEs, common with Kanidm) are recognised and shown as a static badge in the load-from-session panel rather than a dead-end clickable button
+- **Claim descriptions** — hover over any claim key for a plain-English description; also shown in the comparison diff
 - **Expiry warning** — immediately flags tokens whose `exp` has passed
 - **Token timeline** — visual bar showing `iat` → now → `exp`, with remaining time or expiry age; updates live every second
-- **JWKS signature verification** — paste a JWKS URI (auto-filled when signed in) and verify the token's signature locally using the Web Crypto API; supports RS256/384/512, PS256/384/512, ES256/384/512
-- **Token diff** — paste two JWTs and compare their claims side by side; highlights added, removed, and changed claims; includes claim descriptions
-- **How to get a JWT** — expandable guide covering DevTools, `curl`, Bearer headers, and Keycloak admin console
+- **JWKS signature verification** — paste a JWKS URI (auto-filled when signed in) and verify the token's signature locally using the Web Crypto API; supports RS256/384/512, PS256/384/512, ES256/384/512. Appears inline below the decoded payload when a JWS has been decoded
+- **Decoder history** — every successful decode is preserved in the session (last 10, deduped by payload hash). Each row shows label/type/timestamp with **Recall**, **A**/**B** toggle (highlight to mark a row as Token A or Token B), and **✕ Delete** actions
+- **A/B compare** — when you toggle A on one row and B on another, the claim-by-claim diff renders inline below the history table, with header-mismatch warnings and colour-coded only-A/only-B/changed rows
+- **Push to decoder** — every raw token on the Claims page has an **Open in Decoder →** button. The decoder page itself shows a "Load from active session" panel with one-click ID / Access / Refresh buttons when you're signed in
+- **Help button** — links to the in-app Reference page's JWT tab, which explains JWS vs JWE, anatomy, and how to obtain a JWT (DevTools, curl, Bearer headers, Keycloak admin console)
 
 ### Conformance & security analysis
 
@@ -78,7 +81,8 @@ This tool was written collaboratively with AI: Claude Code - Claude Sonnet 4.6. 
 - **RP-initiated logout** — redirects to the provider's `end_session_endpoint` where supported
 - **PKCE S256** — enabled by default; required by Kanidm, recommended everywhere
 - **ES256 / RS256** — configurable token signing algorithm enforcement
-- **Reference page** — built-in documentation covering connectivity, scopes, the OIDC flow, identity brokering (Keycloak as broker to upstream IdPs), and data & privacy
+- **Reference page** — built-in documentation covering connectivity, scopes, the OIDC flow, identity brokering (Keycloak as broker to upstream IdPs), JWT anatomy (JWS vs JWE, how to obtain one), and data & privacy
+- **About page version badge** — shows the running version baked in at Docker build time from the git tag (or `vdev` for local runs)
 
 ---
 
@@ -295,6 +299,19 @@ python app.py
 # With Docker (build from source)
 docker compose -f docker-compose.build.yml up --build
 ```
+
+---
+
+## Tests
+
+A pytest harness covers pure helpers (`_detect_token_type`, `decode_jwt`, `_update_decoder_history`) and Flask route smoke tests (`/`, `/decode`, `/reference`, `/about`, `/decode/history/*`). It does not exercise the OIDC callback flow or anything that would need an outbound network call — those need a real provider.
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -q
+```
+
+Tests run automatically on every pull request via [.github/workflows/test.yml](.github/workflows/test.yml).
 
 ---
 
