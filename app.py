@@ -446,8 +446,22 @@ def decode_jwt(token: str) -> dict:
         return {'error': str(exc), 'raw': token}
 
 
+# Map raw_tokens session keys to display labels for known_type fast-path.
+_TOKEN_TYPE_FROM_KEY = {
+    'id_token':      'ID',
+    'access_token':  'Access',
+    'refresh_token': 'Refresh',
+}
+
+
 def _detect_token_type(header: dict, payload: dict) -> str:
-    """Classify a JWT as ID / Access / Refresh / Unknown from header+payload typ claims."""
+    """Classify a JWT as ID / Access / Refresh / Unknown from header + payload claims.
+
+    First tries explicit `typ` markers (Keycloak family, RFC 9068), then falls
+    back to claim-presence heuristics for providers (e.g. Kanidm) that emit no
+    distinguishing `typ`: the `nonce` claim is unique to ID tokens, and a
+    `scope`/`scp` claim is characteristic of access tokens.
+    """
     typ = (header.get('typ') or '').upper()
     p_typ = (payload.get('typ') or '').upper()
     if typ == 'ID':
@@ -458,11 +472,20 @@ def _detect_token_type(header: dict, payload: dict) -> str:
         return 'Access'
     if p_typ == 'BEARER' or typ == 'BEARER':
         return 'Access'
+    if 'nonce' in payload:
+        return 'ID'
+    if 'scope' in payload or 'scp' in payload:
+        return 'Access'
     return 'Unknown'
 
 
-def _update_decoder_history(session_obj, token_raw: str, decoded: dict) -> None:
-    """Prepend a successfully-decoded JWT to session decoder history (max 10, deduped by payload hash)."""
+def _update_decoder_history(session_obj, token_raw: str, decoded: dict, known_type: str = None) -> None:
+    """Prepend a successfully-decoded JWT to session decoder history (max 10, deduped by payload hash).
+
+    If ``known_type`` is provided ('ID' / 'Access' / 'Refresh'), it overrides
+    detection — used when the caller already knows the type (e.g. token loaded
+    from a specific session slot, or recalled from an existing history entry).
+    """
     payload = decoded.get('payload', {})
     payload_hash = hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode()
@@ -480,7 +503,7 @@ def _update_decoder_history(session_obj, token_raw: str, decoded: dict) -> None:
         'hash': payload_hash,
         'ts': int(time.time()),
         'label': ' — '.join(filter(None, label_parts)) or 'token',
-        'token_type': _detect_token_type(decoded.get('header', {}), payload),
+        'token_type': known_type or _detect_token_type(decoded.get('header', {}), payload),
         'token_raw': token_raw,
     }
     history.insert(0, entry)
@@ -834,12 +857,15 @@ def decode_tool():
     claims_list = None
     token_input = request.form.get('token', '').strip()
     jwks_uri = request.form.get('jwks_uri', '').strip()
+    known_type = None
 
-    # Pre-load from session when linked from /claims "Open in Decoder" buttons
+    # Pre-load from session when linked from /claims "Open in Decoder" buttons.
+    # The session-key tells us the type authoritatively — bypass detection.
     if not token_input and request.args.get('from_session') and session.get('raw_tokens'):
         which = request.args.get('token_type', 'id_token')
-        if which in ('id_token', 'access_token', 'refresh_token'):
+        if which in _TOKEN_TYPE_FROM_KEY:
             token_input = session['raw_tokens'].get(which, '') or ''
+            known_type = _TOKEN_TYPE_FROM_KEY[which]
 
     if token_input:
         decoded = decode_jwt(token_input)
@@ -856,14 +882,30 @@ def decode_tool():
                         pass
             if jwks_uri:
                 decoded['jwks_uri'] = jwks_uri
-            _update_decoder_history(session, token_input, decoded)
+            # Recall path: re-decoding a token already in history should keep its
+            # known-good type label rather than fall back to fresh detection.
+            if known_type is None:
+                payload_hash = hashlib.sha256(
+                    json.dumps(decoded.get('payload', {}), sort_keys=True).encode()
+                ).hexdigest()[:12]
+                for entry in session.get('decoder_history', []):
+                    if entry.get('hash') == payload_hash:
+                        known_type = entry.get('token_type')
+                        break
+            _update_decoder_history(session, token_input, decoded, known_type=known_type)
 
-    # Which session tokens are available for the "Load from session" panel
+    # Which session tokens are available, and which of those are encrypted JWEs
+    # (5-part tokens we can't decode — typically refresh tokens).
     session_token_types = []
+    session_token_jwes  = []
     if session.get('raw_tokens'):
         for k in ('id_token', 'access_token', 'refresh_token'):
-            if session['raw_tokens'].get(k):
-                session_token_types.append(k)
+            tok = session['raw_tokens'].get(k)
+            if not tok:
+                continue
+            session_token_types.append(k)
+            if tok.count('.') == 4:
+                session_token_jwes.append(k)
 
     return render_template('decode.html',
         token_input=token_input,
@@ -874,12 +916,23 @@ def decode_tool():
         jwks_uri=jwks_uri,
         decoder_history=session.get('decoder_history', []),
         session_token_types=session_token_types,
+        session_token_jwes=session_token_jwes,
     )
 
 
 @app.route('/decode/history/clear', methods=['POST'])
 def decode_history_clear():
     session.pop('decoder_history', None)
+    return redirect(url_for('decode_tool'))
+
+
+@app.route('/decode/history/delete', methods=['POST'])
+def decode_history_delete():
+    """Remove a single entry from decoder history by payload-hash."""
+    target = request.form.get('hash', '')
+    if target:
+        history = session.get('decoder_history', [])
+        session['decoder_history'] = [e for e in history if e.get('hash') != target]
     return redirect(url_for('decode_tool'))
 
 
@@ -1184,7 +1237,7 @@ def providers_page():
 def reference():
     """Reference documentation page — connectivity, scopes, OIDC flow, privacy."""
     tab = request.args.get('tab', 'connectivity')
-    if tab not in {'connectivity', 'scopes', 'flow', 'brokering', 'federated'}:  # 'federated' kept for backward-compat URLs
+    if tab not in {'connectivity', 'scopes', 'flow', 'brokering', 'federated', 'jwt'}:  # 'federated' kept for backward-compat URLs
         tab = 'connectivity'
     return render_template('reference.html', active_tab=tab)
 
