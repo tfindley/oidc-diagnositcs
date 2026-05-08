@@ -1,5 +1,10 @@
 FROM python:3.13-slim
 
+# Version baked in at build time by .github/workflows/release.yml from the
+# git tag. Defaults to 'dev' for local builds.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 WORKDIR /app
 
 # Create a non-root user with a home directory (required by gunicorn's control server)
